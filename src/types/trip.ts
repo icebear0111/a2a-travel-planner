@@ -70,6 +70,8 @@ export interface TripStoreState {
   scheduleData: DaySchedule[];
   budgetData: BudgetData;
   selectedDay: number;
+  selectedActivityId: string | null; // 👈 추가 필요
+  
 
   // 액션들
   setIsMobile: (mobile: boolean) => void;
@@ -78,4 +80,5 @@ export interface TripStoreState {
   updateAgentStatus: (index: number, newStatus: Partial<AgentStatus>) => void;
   updateScheduleItem: (dayIndex: number, itemId: string, newContent: Partial<Activity>) => void;
   deleteScheduleItem: (dayIndex: number, itemId: string) => void;
+  setSelectedActivityId: (id: string | null) => void; // 👈 추가 필요
 }

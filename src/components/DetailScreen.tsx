@@ -13,21 +13,75 @@ import {
   Info,
   ArrowRight,
 } from 'lucide-react';
-import { spotData } from '@/data/dummyData';
+
+// 👇 1. 더미 데이터 삭제하고 스토어 사용
+import { useTripStore } from '@/stores/tripStore';
 
 interface DetailScreenProps {
   onBack: () => void;
 }
 
 export default function DetailScreen({ onBack }: DetailScreenProps) {
+  // 👇 2. 스토어에서 필요한 데이터 가져오기
+  const { scheduleData, selectedDay, selectedActivityId } = useTripStore();
+
   const [isSaved, setIsSaved] = useState(false);
+
+  console.log('--- 디버깅 시작 ---');
+  console.log('1. 현재 선택된 날짜:', selectedDay);
+  console.log('2. 클릭한 ID(내가 찾는 놈):', selectedActivityId, typeof selectedActivityId);
+
+  // 👇 3. 선택된 일정 데이터 찾기 (핵심 로직!)
+  // (1) 현재 날짜의 스케줄을 찾고 -> (2) 그 안에서 클릭한 ID와 같은 활동을 찾음
+  const currentDaySchedule = scheduleData.find((d) => d.day === selectedDay);
+  const activity = currentDaySchedule?.activities.find((item) => item.id === selectedActivityId);
+
+  // 예외 처리: 만약 데이터를 못 찾으면 (새로고침 등) 뒤로 가기
+  if (!activity) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <p className="text-slate-500 mb-4">일정 정보를 찾을 수 없습니다.</p>
+          <button onClick={onBack} className="text-blue-500 font-bold">
+            돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // (참고) 이미지나 팁 같은 상세 데이터가 Activity 타입에 없다면
+  // 임시로 기본값을 보여주거나, 데이터 구조를 확장해야 합니다.
+  // 여기서는 기존 UI 유지를 위해 임시 데이터를 섞어서 보여줍니다.
+  const displayData = {
+    ...activity,
+    image:
+      'https://images.unsplash.com/photo-1528360983277-13d9b152c6d1?q=80&w=2070&auto=format&fit=crop', // 기본 이미지 (오사카성 예시)
+    rating: '4.8',
+    reviews: '1.2k',
+    tips: [
+      '아침 일찍 방문하면 인파를 피할 수 있어요.',
+      '주유패스가 있으면 무료 입장 가능!',
+      '천수각 8층 전망대는 필수 코스입니다.',
+    ],
+    nearbySpots: [
+      { name: '오사카 역사박물관', type: 'Museum', distance: '300m', rating: '4.5' },
+      { name: '니시노마루 정원', type: 'Park', distance: '500m', rating: '4.6' },
+    ],
+  };
 
   return (
     <div className="min-h-screen bg-white pb-24 font-body text-slate-900">
-      {/* 1. 히어로 이미지 (화면 상단 45%) */}
+      {/* 1. 히어로 이미지 */}
       <div className="relative h-[45vh] w-full bg-slate-100">
-        <Image src={spotData.image} alt={spotData.title} fill className="object-cover" priority />
-        {/* 이미지 위 그라데이션 (텍스트 가독성용) */}
+        {/* 실제 이미지 URL이 있다면 그것을 사용 */}
+        <Image
+          src={displayData.image}
+          alt={displayData.title}
+          fill
+          className="object-cover"
+          priority
+        />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80" />
 
         {/* 상단 네비게이션 */}
@@ -55,25 +109,38 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
           </div>
         </div>
 
-        {/* 타이틀 정보 (이미지 하단) */}
+        {/* 타이틀 정보 (실제 데이터 반영) */}
         <div className="absolute bottom-0 left-0 right-0 p-6 pb-10 text-white">
           <h1 className="text-4xl md:text-5xl font-display font-bold mb-2 leading-tight tracking-tight">
-            {spotData.title}
+            {displayData.title}
           </h1>
           <div className="flex items-center gap-2 text-white/90 font-medium">
             <MapPin className="w-4 h-4" />
-            <span className="text-sm md:text-base">{spotData.subtitle}</span>
+            <span className="text-sm md:text-base">
+              {/* 부제목이 없으면 시간 정보라도 보여줌 */}
+              {displayData.desc || displayData.time}
+            </span>
           </div>
         </div>
       </div>
 
       {/* 2. 상세 콘텐츠 영역 */}
       <div className="-mt-6 relative z-10 bg-white rounded-t-3xl px-6 pt-10">
-        {/* 핵심 정보 그리드 (Bento Grid 스타일 - 모노크롬) */}
+        {/* 핵심 정보 그리드 */}
         <div className="grid grid-cols-3 gap-4 mb-10">
           {[
-            { label: 'Rating', value: spotData.rating, sub: `(${spotData.reviews})`, icon: Star },
-            { label: 'Duration', value: spotData.duration, sub: 'Recommended', icon: Clock },
+            {
+              label: 'Rating',
+              value: displayData.rating,
+              sub: `(${displayData.reviews})`,
+              icon: Star,
+            },
+            {
+              label: 'Duration',
+              value: displayData.duration || '2h',
+              sub: 'Recommended',
+              icon: Clock,
+            },
             { label: 'Cost', value: 'Free', sub: 'Entrance', icon: Info },
           ].map((item, i) => (
             <div
@@ -89,15 +156,15 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
           ))}
         </div>
 
-        {/* 설명 텍스트 */}
+        {/* 설명 텍스트 (실제 데이터 반영) */}
         <div className="mb-12">
           <h3 className="text-lg font-bold mb-3">About</h3>
           <p className="text-slate-600 leading-relaxed text-lg font-light">
-            {spotData.description}
+            {displayData.desc || '상세 설명 정보가 없습니다.'}
           </p>
         </div>
 
-        {/* AI 추천 팁 (심플 리스트) */}
+        {/* AI 추천 팁 (임시 데이터 사용) */}
         <div className="mb-12">
           <div className="flex items-center gap-3 mb-4">
             <h3 className="text-lg font-bold">Local Tips</h3>
@@ -106,7 +173,7 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
             </span>
           </div>
           <div className="space-y-3">
-            {spotData.tips.map((tip, i) => (
+            {displayData.tips.map((tip, i) => (
               <div
                 key={i}
                 className="flex gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100"
@@ -120,11 +187,11 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
           </div>
         </div>
 
-        {/* 주변 추천 (가로 스크롤) */}
+        {/* 주변 추천 (임시 데이터 사용) */}
         <div>
           <h3 className="text-lg font-bold mb-5">Nearby Gems</h3>
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-6 px-6">
-            {spotData.nearbySpots.map((spot, i) => (
+            {displayData.nearbySpots.map((spot, i) => (
               <div
                 key={i}
                 className="flex-shrink-0 w-64 p-5 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all cursor-pointer"

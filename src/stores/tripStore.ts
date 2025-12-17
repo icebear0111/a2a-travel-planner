@@ -8,7 +8,9 @@ import {
 import { TripStoreState } from '@/types/trip';
 
 export const useTripStore = create<TripStoreState>((set) => ({
-  // 1. 상태 초기값 설정 (그대로 유지)
+  // ============================================
+  // 1. 상태 초기값 설정
+  // ============================================
   isMobile: true,
   planningProgress: 0,
   currentAgentStatus: initialAgentStatus,
@@ -16,11 +18,15 @@ export const useTripStore = create<TripStoreState>((set) => ({
   scheduleData: initialScheduleData,
   budgetData: initialBudgetData,
   selectedDay: 1,
+  selectedActivityId: null,
 
+  // ============================================
   // 2. 액션 함수 정의
+  // ============================================
   setIsMobile: (mobile) => set({ isMobile: mobile }),
   setSelectedDay: (day) => set({ selectedDay: day }),
   setProgress: (progress) => set({ planningProgress: progress }),
+  setSelectedActivityId: (id) => set({ selectedActivityId: id }),
 
   updateAgentStatus: (index, newStatus) =>
     set((state) => {
@@ -39,8 +45,6 @@ export const useTripStore = create<TripStoreState>((set) => ({
         if (daySchedule.day === dayIndex) {
           return {
             ...daySchedule,
-            // 데이터 구조에 따라 'schedules' 또는 'items' 등으로 이름이 다를 수 있습니다.
-            // 여기서는 'schedules'라고 가정합니다. (확인 필요!)
             activities: daySchedule.activities.map((item) =>
               item.id === itemId ? { ...item, ...newContent } : item
             ),

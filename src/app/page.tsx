@@ -8,12 +8,8 @@ import HomeScreen from '@/components/HomeScreen';
 import LoadingScreen from '@/components/LoadingScreen';
 import ResultScreen from '@/components/ResultScreen';
 import DetailScreen from '@/components/DetailScreen';
+import EditScreen from '@/components/EditScreen';
 
-const EditScreen = ({ onBack }: { onBack: () => void }) => (
-  <div className="p-8">
-    편집 화면<button onClick={onBack}>뒤로</button>
-  </div>
-);
 const ShareScreen = ({ onBack }: { onBack: () => void }) => (
   <div className="p-8">
     공유 화면<button onClick={onBack}>뒤로</button>

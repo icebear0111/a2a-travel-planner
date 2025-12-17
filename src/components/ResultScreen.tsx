@@ -177,6 +177,16 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
                 );
               })}
             </div>
+
+            {/* 👇 타임라인 리스트(div)가 끝난 바로 아래에 이 버튼을 추가해주세요 */}
+            <div className="mt-8 pb-8">
+              <button
+                onClick={() => setCurrentScreen('edit')}
+                className="w-full py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-600 font-bold flex items-center justify-center gap-2 hover:bg-black hover:text-white hover:border-black transition-all"
+              >
+                Edit Schedule
+              </button>
+            </div>
           </div>
         )}
 

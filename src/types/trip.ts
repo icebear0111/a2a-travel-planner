@@ -76,4 +76,6 @@ export interface TripStoreState {
   setSelectedDay: (day: number) => void;
   setProgress: (progress: number) => void;
   updateAgentStatus: (index: number, newStatus: Partial<AgentStatus>) => void;
+  updateScheduleItem: (dayIndex: number, itemId: string, newContent: Partial<Activity>) => void;
+  deleteScheduleItem: (dayIndex: number, itemId: string) => void;
 }

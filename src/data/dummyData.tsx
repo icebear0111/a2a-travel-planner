@@ -1,13 +1,13 @@
 import React from 'react';
-import { Plane, Hotel, MapPin, DollarSign, Train, Camera, Utensils, Coffee } from 'lucide-react';
-import { TripData, DaySchedule, BudgetData, AgentStatus, Activity } from '@/types/trip';
+import { Plane, Hotel, MapPin, Train, Camera, Utensils, Coffee } from 'lucide-react';
+import { TripData, DaySchedule, BudgetData, AgentStatus } from '@/types/trip';
 
-// 1. 홈 화면 데이터
+// 1. 홈 화면 데이터 (색상 제거)
 export const homeSuggestions = [
-  { emoji: '🌸', text: '오사카 벚꽃 여행', color: 'from-pink-500 to-rose-500' },
-  { emoji: '🏖️', text: '발리 힐링 휴양', color: 'from-cyan-500 to-blue-500' },
-  { emoji: '🗼', text: '파리 로맨틱 투어', color: 'from-violet-500 to-purple-500' },
-  { emoji: '🍜', text: '방콕 맛집 탐방', color: 'from-orange-500 to-amber-500' },
+  { emoji: '🌸', text: '오사카 벚꽃 여행' },
+  { emoji: '🏖️', text: '발리 힐링 휴양' },
+  { emoji: '🗼', text: '파리 로맨틱 투어' },
+  { emoji: '🍜', text: '방콕 맛집 탐방' },
 ];
 
 export const homeRecentTrips = [
@@ -208,46 +208,16 @@ export const initialScheduleData: DaySchedule[] = [
   },
 ];
 
-// 5. 결과 화면 - 예산 정보
+// 5. 결과 화면 - 예산 정보 (color 속성 삭제됨)
 export const initialBudgetData: BudgetData = {
   total: 1200000,
   currency: { rate: 900, unit: '¥100' },
   breakdown: [
-    {
-      category: '항공',
-      amount: 450000,
-      icon: <Plane className="w-4 h-4" />,
-      color: 'bg-blue-500',
-      percent: 37.5,
-    },
-    {
-      category: '숙소',
-      amount: 320000,
-      icon: <Hotel className="w-4 h-4" />,
-      color: 'bg-amber-500',
-      percent: 26.7,
-    },
-    {
-      category: '교통',
-      amount: 80000,
-      icon: <Train className="w-4 h-4" />,
-      color: 'bg-emerald-500',
-      percent: 6.7,
-    },
-    {
-      category: '식비',
-      amount: 200000,
-      icon: <Utensils className="w-4 h-4" />,
-      color: 'bg-rose-500',
-      percent: 16.7,
-    },
-    {
-      category: '입장/기타',
-      amount: 150000,
-      icon: <Camera className="w-4 h-4" />,
-      color: 'bg-violet-500',
-      percent: 12.5,
-    },
+    { category: '항공', amount: 450000, icon: <Plane className="w-4 h-4" />, percent: 37.5 },
+    { category: '숙소', amount: 320000, icon: <Hotel className="w-4 h-4" />, percent: 26.7 },
+    { category: '교통', amount: 80000, icon: <Train className="w-4 h-4" />, percent: 6.7 },
+    { category: '식비', amount: 200000, icon: <Utensils className="w-4 h-4" />, percent: 16.7 },
+    { category: '입장/기타', amount: 150000, icon: <Camera className="w-4 h-4" />, percent: 12.5 },
   ],
   dailyBudget: [
     { day: 1, amount: 350000 },
@@ -284,13 +254,4 @@ export const spotData = {
   alternatives: ['신세카이', '아메리카무라', '덴덴타운'],
 };
 
-// 타입별 스타일 매핑
-export const typeColors: Record<string, { bg: string; text: string; border: string }> = {
-  flight: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
-  transport: { bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-200' },
-  hotel: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
-  sightseeing: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200' },
-  food: { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200' },
-  shopping: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200' },
-  theme: { bg: 'bg-violet-50', text: 'text-violet-600', border: 'border-violet-200' },
-};
+// 🗑️ typeColors 객체 완전 삭제됨

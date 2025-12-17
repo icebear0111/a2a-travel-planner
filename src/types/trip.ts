@@ -47,7 +47,6 @@ export interface BudgetData {
     category: string;
     amount: number;
     icon: ReactElement<LucideIcon>;
-    color: string;
     percent: number;
   }[];
   dailyBudget: { day: number; amount: number }[];

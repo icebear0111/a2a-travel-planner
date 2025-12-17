@@ -6,26 +6,9 @@ import { useTripStore } from '@/stores/tripStore';
 // Components
 import HomeScreen from '@/components/HomeScreen';
 import LoadingScreen from '@/components/LoadingScreen';
+import ResultScreen from '@/components/ResultScreen';
+import DetailScreen from '@/components/DetailScreen';
 
-// 아직 만들지 않은 상세 화면들은 일단 Placeholder로 유지 (나중에 구현 예정)
-const ResultScreen = ({ setCurrentScreen }: { setCurrentScreen: (screen: string) => void }) => (
-  <div className="min-h-screen flex flex-col items-center justify-center bg-white">
-    <h1 className="text-3xl font-bold mb-4">✨ 여행 계획이 완성되었습니다!</h1>
-    <p className="text-slate-500 mb-8">결과 화면 UI는 다음 단계에서 구현할 예정입니다.</p>
-    <button
-      onClick={() => setCurrentScreen('home')}
-      className="px-6 py-3 bg-black text-white rounded-full hover:bg-slate-800 transition-colors"
-    >
-      처음으로 돌아가기
-    </button>
-  </div>
-);
-
-const DetailScreen = ({ onBack }: { onBack: () => void }) => (
-  <div className="p-8">
-    상세 화면<button onClick={onBack}>뒤로</button>
-  </div>
-);
 const EditScreen = ({ onBack }: { onBack: () => void }) => (
   <div className="p-8">
     편집 화면<button onClick={onBack}>뒤로</button>

@@ -9,7 +9,8 @@ export type ActivityType =
   | 'food'
   | 'theme'
   | 'shopping'
-  | 'coffee';
+  | 'coffee'
+  | 'etc';
 
 // 활동 (Activity) 타입
 export interface Activity {
@@ -17,9 +18,10 @@ export interface Activity {
   time: string;
   title: string;
   desc: string;
-  icon: ReactElement<LucideIcon>; // Lucide 아이콘 컴포넌트
+  icon?: ReactElement<LucideIcon>; // Lucide 아이콘 컴포넌트
   type: ActivityType;
   duration: string;
+  price?: number;
 }
 
 // 일별 일정 (DaySchedule) 타입
@@ -46,7 +48,7 @@ export interface BudgetData {
   breakdown: {
     category: string;
     amount: number;
-    icon: ReactElement<LucideIcon>;
+    icon?: ReactElement<LucideIcon>;
     percent: number;
   }[];
   dailyBudget: { day: number; amount: number }[];
@@ -70,8 +72,8 @@ export interface TripStoreState {
   scheduleData: DaySchedule[];
   budgetData: BudgetData;
   selectedDay: number;
-  selectedActivityId: string | null; // 👈 추가 필요
-  
+  selectedActivityId: string | null;
+  isGenerating: boolean;
 
   // 액션들
   setIsMobile: (mobile: boolean) => void;
@@ -80,5 +82,7 @@ export interface TripStoreState {
   updateAgentStatus: (index: number, newStatus: Partial<AgentStatus>) => void;
   updateScheduleItem: (dayIndex: number, itemId: string, newContent: Partial<Activity>) => void;
   deleteScheduleItem: (dayIndex: number, itemId: string) => void;
-  setSelectedActivityId: (id: string | null) => void; // 👈 추가 필요
+  setSelectedActivityId: (id: string | null) => void;
+  setTripTitle: (title: string) => void;
+  generateTrip: (userInput: string) => Promise<void>;
 }

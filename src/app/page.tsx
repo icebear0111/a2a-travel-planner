@@ -5,6 +5,7 @@ import { useTripStore } from '@/stores/tripStore';
 
 // Components
 import HomeScreen from '@/components/HomeScreen';
+import SetupScreen from '@/components/SetupScreen'; // 👈 [추가]
 import LoadingScreen from '@/components/LoadingScreen';
 import ResultScreen from '@/components/ResultScreen';
 import DetailScreen from '@/components/DetailScreen';
@@ -13,61 +14,108 @@ import ShareScreen from '@/components/ShareScreen';
 
 export default function Home() {
   const { setIsMobile } = useTripStore();
+
+  // 1. 화면 상태 관리
   const [currentScreen, setCurrentScreen] = useState('home');
-  // 로컬 상태로 isMobile 관리 (초기 렌더링 매칭을 위해)
   const [localIsMobile, setLocalIsMobile] = useState(false);
 
-  // 1. 윈도우 크기 감지 (반응형 처리)
+  // ==================================================================
+  // 🚀 [핵심] 브라우저 히스토리(뒤로가기) 연동 로직
+  // ==================================================================
+
+  // (1) 화면 이동 함수
+  const navigateTo = (screen: string) => {
+    // 로딩 화면은 히스토리에 남기지 않음 (중간 과정이므로)
+    if (screen === 'loading') {
+      setCurrentScreen(screen);
+      return;
+    }
+
+    // 홈이 아닌 다른 화면으로 갈 때만 히스토리 쌓기
+    if (screen !== 'home') {
+      window.history.pushState({ screen }, '', `?view=${screen}`);
+    } else {
+      window.history.pushState({ screen: 'home' }, '', '/');
+    }
+
+    setCurrentScreen(screen);
+  };
+
+  // (2) 브라우저 뒤로가기 버튼 감지 (PopState Event)
   useEffect(() => {
-    const handleResize = () => {
-      // 768px 미만이면 모바일로 간주
-      const mobile = window.innerWidth < 768;
-      setLocalIsMobile(mobile);
-      setIsMobile(mobile); // 전역 스토어 업데이트
+    const handlePopState = (event: PopStateEvent) => {
+      const targetScreen = event.state?.screen || 'home';
+      setCurrentScreen(targetScreen);
     };
 
-    // 초기 실행
-    handleResize();
+    window.addEventListener('popstate', handlePopState);
 
-    // 리사이즈 이벤트 등록
+    // 초기 로드 시 URL 파라미터 체크
+    setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const view = params.get('view');
+      if (view) setCurrentScreen(view);
+    }, 0);
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // 2. 윈도우 크기 감지 (반응형)
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setLocalIsMobile(mobile);
+      setIsMobile(mobile);
+    };
+
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [setIsMobile]);
 
-  // 2. 화면 렌더링 로직
+  // 3. 화면 렌더링 로직
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
         return (
           <HomeScreen
             isMobile={localIsMobile}
-            onStartPlanning={() => setCurrentScreen('loading')}
+            // 👇 [수정] HomeScreen에서 요청하는 화면으로 이동 (주로 'setup')
+            onNavigate={(screen) => navigateTo(screen)}
           />
         );
+
+      case 'setup': // 👈 [추가] 여행 정보 입력 화면
+        return (
+          <SetupScreen
+            onBack={() => window.history.back()} // 브라우저 뒤로가기 실행
+            onNext={() => navigateTo('loading')} // AI 생성 시작 -> 로딩 화면으로
+          />
+        );
+
       case 'loading':
         return (
-          <LoadingScreen isMobile={localIsMobile} onComplete={() => setCurrentScreen('result')} />
-        );
-      case 'result':
-        return <ResultScreen setCurrentScreen={setCurrentScreen} />;
-      case 'detail':
-        return <DetailScreen onBack={() => setCurrentScreen('result')} />;
-      case 'edit':
-        return <EditScreen onBack={() => setCurrentScreen('result')} />;
-      case 'share':
-        return <ShareScreen onBack={() => setCurrentScreen('result')} />;
-      default:
-        return (
-          <HomeScreen
-            isMobile={localIsMobile}
-            onStartPlanning={() => setCurrentScreen('loading')}
+          <LoadingScreen
+            onComplete={() => navigateTo('result')} // 로딩 끝 -> 결과 화면
           />
         );
+
+      case 'result':
+        return <ResultScreen setCurrentScreen={navigateTo} />;
+
+      case 'detail':
+        return <DetailScreen onBack={() => window.history.back()} />;
+
+      case 'edit':
+        return <EditScreen onBack={() => window.history.back()} />;
+
+      case 'share':
+        return <ShareScreen onBack={() => window.history.back()} />;
+
+      default:
+        return <HomeScreen isMobile={localIsMobile} onNavigate={(screen) => navigateTo(screen)} />;
     }
   };
 
-  return (
-    // 3. 윈도우 창 프레임 제거 -> 전체 화면 사용
-    <main className="min-h-screen w-full bg-white text-slate-900">{renderScreen()}</main>
-  );
+  return <main className="min-h-screen w-full bg-white text-slate-900">{renderScreen()}</main>;
 }

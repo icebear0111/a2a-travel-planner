@@ -1,119 +1,96 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Check, Loader2, Plane, Hotel, Map, Wallet } from 'lucide-react';
-
-const steps = [
-  { id: 'analyze', label: '여행 취향 분석 중', icon: <Loader2 className="w-5 h-5 animate-spin" /> },
-  { id: 'flight', label: '최적 항공권 스캔', icon: <Plane className="w-5 h-5" /> },
-  { id: 'hotel', label: '숙소 리뷰 데이터 확인', icon: <Hotel className="w-5 h-5" /> },
-  { id: 'route', label: '동선 시뮬레이션 돌리는 중', icon: <Map className="w-5 h-5" /> },
-  { id: 'budget', label: '예산 최적화', icon: <Wallet className="w-5 h-5" /> },
-];
+import React, { useEffect, useState } from 'react';
+import { Plane, Hotel, Map, Wallet, Sparkles, Utensils } from 'lucide-react';
+import { useTripStore } from '@/stores/tripStore';
 
 interface LoadingScreenProps {
-  isMobile: boolean;
   onComplete: () => void;
 }
 
+// 로딩 중에 보여줄 아이콘들 (순서대로 롤링)
+const ICONS = [
+  { icon: Plane, key: 'flight' },
+  { icon: Hotel, key: 'hotel' },
+  { icon: Map, key: 'map' },
+  { icon: Utensils, key: 'food' },
+  { icon: Wallet, key: 'budget' },
+];
+
 export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
-  const [progress, setProgress] = useState(0);
+  const { currentAgentStatus, isGenerating } = useTripStore();
+  const [activeIconIndex, setActiveIconIndex] = useState(0);
 
-  const stepDuration = 100 / steps.length;
-  const currentStepIndex = Math.min(Math.floor(progress / stepDuration), steps.length - 1);
+  // 1. 실제 진행률 계산 (백엔드 데이터 기반)
+  const completedCount = currentAgentStatus.filter((a) => a.status === 'complete').length;
+  // 너무 0%에 오래 머물지 않도록 최소값 보정
+  const progress = Math.max(5, Math.round((completedCount / currentAgentStatus.length) * 100));
 
+  // 2. 아이콘 자동 롤링 애니메이션 (0.8초마다 변경)
   useEffect(() => {
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(timer);
-          setTimeout(onComplete, 800);
-          return 100;
-        }
-        const increment = prev < 60 ? 3 : 1;
-        return Math.min(prev + increment, 100);
-      });
-    }, 50);
+    const interval = setInterval(() => {
+      setActiveIconIndex((prev) => (prev + 1) % ICONS.length);
+    }, 800);
+    return () => clearInterval(interval);
+  }, []);
 
-    return () => clearInterval(timer);
-  }, [onComplete]);
+  // 3. 100% 도달 시 완료 처리
+  useEffect(() => {
+    if (!isGenerating && progress === 100) {
+      const timer = setTimeout(() => {
+        onComplete();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isGenerating, progress, onComplete]);
+
+  // 현재 보여줄 아이콘 컴포넌트
+  const CurrentIcon = ICONS[activeIconIndex].icon;
 
   return (
-    <div className="min-h-screen bg-white font-body flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* 배경 장식 */}
-      <div className="absolute top-0 left-0 w-full h-2 bg-slate-100">
-        <div
-          className="h-full bg-black transition-all duration-200 ease-out"
-          style={{ width: `${progress}%` }}
-        />
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      {/* 1. 중앙 아이콘 애니메이션 영역 */}
+      <div className="relative z-10 flex flex-col items-center space-y-8 animate-fadeInUp">
+        {/* 원형 아이콘 컨테이너 */}
+        <div className="relative w-24 h-24 flex items-center justify-center">
+          {/* 뒤쪽에서 퍼지는 파동 효과 (Pulse) */}
+          <div className="absolute inset-0 bg-slate-100 rounded-full animate-ping opacity-75" />
+          <div className="absolute inset-0 bg-white rounded-full border border-slate-100 shadow-sm z-10" />
+
+          {/* 아이콘 교체 애니메이션 */}
+          <div className="relative z-20 text-black transition-all duration-500 transform scale-100">
+            <CurrentIcon className="w-10 h-10 animate-pulse" strokeWidth={1.5} />
+          </div>
+
+          {/* 장식용 스파클 아이콘 (고정) */}
+          <div className="absolute -top-2 -right-2 z-30 bg-black text-white p-1.5 rounded-full shadow-lg">
+            <Sparkles className="w-3 h-3" />
+          </div>
+        </div>
+
+        {/* 2. 텍스트 & 프로그레스 바 */}
+        <div className="w-64 space-y-4 text-center">
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+            {progress === 100 ? '여행 생성 완료!' : 'AI가 완벽한 여행을 설계 중...'}
+          </h2>
+
+          {/* 프로그레스 바 트랙 */}
+          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+            {/* 실제 진행률 바 */}
+            <div
+              className="h-full bg-black rounded-full transition-all duration-700 ease-in-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <p className="text-xs text-slate-400 font-medium">{progress}% Completed</p>
+        </div>
       </div>
 
-      <div className="w-full max-w-md space-y-12">
-        {/* 메인 텍스트 영역 */}
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-50 rounded-full mb-4 border border-slate-100">
-            <span className="font-display font-bold text-2xl text-slate-900">{progress}%</span>
-          </div>
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 animate-fadeInUp">
-            완벽한 여행을
-            <br />
-            설계하고 있습니다.
-          </h2>
-          <p className="text-slate-500 animate-fadeInUp stagger-1">
-            잠시만 기다려주세요. AI가 수만 가지 경우의 수를
-            <br className="hidden md:block" /> 검토하여 최적의 플랜을 만듭니다.
-          </p>
-        </div>
-
-        {/* 단계별 체크리스트 */}
-        <div className="bg-slate-50 rounded-3xl p-6 md:p-8 border border-slate-100 space-y-5">
-          {steps.map((step, index) => {
-            const isActive = index === currentStepIndex;
-            const isCompleted = index < currentStepIndex;
-
-            return (
-              <div
-                key={step.id}
-                className={`flex items-center gap-4 transition-all duration-500 ${
-                  isActive || isCompleted
-                    ? 'opacity-100 transform translate-x-0'
-                    : 'opacity-30 transform translate-x-2'
-                }`}
-              >
-                {/* 아이콘 상태 */}
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 ${
-                    isCompleted
-                      ? 'bg-black text-white'
-                      : isActive
-                      ? 'bg-white border border-slate-200 text-black shadow-sm'
-                      : 'bg-slate-100 text-slate-300'
-                  }`}
-                >
-                  {isCompleted ? (
-                    <Check className="w-4 h-4" />
-                  ) : isActive ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <div className="w-2 h-2 rounded-full bg-slate-300" />
-                  )}
-                </div>
-
-                {/* 텍스트 상태 */}
-                <div className="flex-1 flex justify-between items-center">
-                  <span className={`font-medium ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>
-                    {step.label}
-                  </span>
-                  {isActive && (
-                    <span className="text-xs font-semibold text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-100">
-                      Processing...
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {/* 3. 배경 데코레이션 (은은한 블러 효과) */}
+      <div className="absolute inset-0 z-0 opacity-40 pointer-events-none">
+        <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-slate-50 rounded-full mix-blend-multiply filter blur-3xl animate-blob" />
+        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-slate-100 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000" />
       </div>
     </div>
   );

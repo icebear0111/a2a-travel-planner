@@ -4,10 +4,10 @@ import { TripData, DaySchedule, BudgetData, AgentStatus } from '@/types/trip';
 
 // 1. 홈 화면 데이터 (색상 제거)
 export const homeSuggestions = [
-  { emoji: '🌸', text: '오사카 벚꽃 여행' },
-  { emoji: '🏖️', text: '발리 힐링 휴양' },
-  { emoji: '🗼', text: '파리 로맨틱 투어' },
-  { emoji: '🍜', text: '방콕 맛집 탐방' },
+  { text: '오사카 벚꽃 여행' },
+  { text: '발리 힐링 휴양' },
+  { text: '파리 로맨틱 투어' },
+  { text: '방콕 맛집 탐방' },
 ];
 
 export const homeRecentTrips = [
@@ -254,4 +254,34 @@ export const spotData = {
   alternatives: ['신세카이', '아메리카무라', '덴덴타운'],
 };
 
-// 🗑️ typeColors 객체 완전 삭제됨
+// 출발지
+export const ORIGIN_AIRPORTS = [
+  { code: 'ICN', name: '인천 (ICN)' },
+  { code: 'GMP', name: '김포 (GMP)' },
+  { code: 'PUS', name: '김해/부산 (PUS)' },
+  { code: 'CJU', name: '제주 (CJU)' },
+  { code: 'TAE', name: '대구 (TAE)' },
+  { code: 'CJJ', name: '청주 (CJJ)' },
+  { code: 'MWX', name: '무안 (MWX)' },
+];
+
+// 도착지
+export const ARRIVAL_AIRPORTS = [
+  { code: 'ICN', name: '인천 (ICN)' },
+  { code: 'GMP', name: '김포 (GMP)' },
+  { code: 'PUS', name: '김해/부산 (PUS)' },
+  { code: 'CJU', name: '제주 (CJU)' },
+  { code: 'NRT', name: '도쿄/나리타 (NRT)' },
+  { code: 'HND', name: '도쿄/하네다 (HND)' },
+  { code: 'KIX', name: '오사카/간사이 (KIX)' },
+  { code: 'FUK', name: '후쿠오카 (FUK)' },
+  { code: 'CTS', name: '삿포로 (CTS)' },
+  { code: 'TPE', name: '타이베이 (TPE)' },
+  { code: 'DAD', name: '다낭 (DAD)' },
+  { code: 'BKK', name: '방콕 (BKK)' },
+  { code: 'SIN', name: '싱가포르 (SIN)' },
+  { code: 'CDG', name: '파리 (CDG)' },
+  { code: 'LHR', name: '런던 (LHR)' },
+  { code: 'JFK', name: '뉴욕 (JFK)' },
+  { code: 'LAX', name: '로스앤젤레스 (LAX)' },
+];

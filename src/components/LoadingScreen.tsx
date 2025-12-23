@@ -26,11 +26,11 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
   // 너무 0%에 오래 머물지 않도록 최소값 보정
   const progress = Math.max(5, Math.round((completedCount / currentAgentStatus.length) * 100));
 
-  // 2. 아이콘 자동 롤링 애니메이션 (0.8초마다 변경)
+  // 2. 아이콘 자동 롤링 애니메이션
   useEffect(() => {
     const interval = setInterval(() => {
       setActiveIconIndex((prev) => (prev + 1) % ICONS.length);
-    }, 800);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 

@@ -12,29 +12,23 @@ import {
   Camera,
   Train,
 } from 'lucide-react';
-import { useTripStore } from '@/stores/tripStore'; // 스토어 import 확인
-// import { initialScheduleData } from '@/data/dummyData'; // 이제 더미데이터 직접 안 씁니다!
+import { useTripStore } from '@/stores/tripStore';
 
 interface EditScreenProps {
   onBack: () => void;
 }
 
 export default function EditScreen({ onBack }: EditScreenProps) {
-  // 1. Zustand 스토어에서 데이터와 함수 가져오기
   const { scheduleData, selectedDay, setSelectedDay, updateScheduleItem, deleteScheduleItem } =
     useTripStore();
 
-  // 2. 현재 선택된 날짜(Day)의 일정 리스트 찾기
-  // (스토어의 scheduleData에서 selectedDay와 일치하는 것을 찾음)
   const currentDaySchedule = scheduleData.find((d) => d.day === selectedDay);
   const items = currentDaySchedule ? currentDaySchedule.activities : [];
 
-  // 3. 입력값 변경 핸들러 (바로 스토어에 반영)
   const handleInputChange = (id: string, field: string, value: string) => {
     updateScheduleItem(selectedDay, id, { [field]: value });
   };
 
-  // 4. 항목 삭제 핸들러 (스토어 함수 호출)
   const handleDelete = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
       deleteScheduleItem(selectedDay, id);
@@ -68,7 +62,7 @@ export default function EditScreen({ onBack }: EditScreenProps) {
           {scheduleData.map((dayItem) => (
             <button
               key={dayItem.day}
-              onClick={() => setSelectedDay(dayItem.day)} // 클릭 시 스토어의 날짜 변경
+              onClick={() => setSelectedDay(dayItem.day)}
               className={`flex-shrink-0 px-5 py-2.5 rounded-full text-sm font-bold border transition-all ${
                 selectedDay === dayItem.day
                   ? 'bg-black text-white border-black'
@@ -99,7 +93,7 @@ export default function EditScreen({ onBack }: EditScreenProps) {
                 <div className="w-16">
                   <input
                     type="text"
-                    value={item.time} // defaultValue 대신 value 사용 (실시간 반영)
+                    value={item.time}
                     onChange={(e) => handleInputChange(item.id, 'time', e.target.value)}
                     className="w-full text-sm font-bold text-slate-900 bg-slate-50 border-transparent rounded-lg py-1 px-2 text-center focus:bg-white focus:ring-2 focus:ring-black focus:outline-none transition-all"
                   />
@@ -117,7 +111,6 @@ export default function EditScreen({ onBack }: EditScreenProps) {
                   <input
                     type="text"
                     value={item.type}
-                    // type도 수정 가능하게 하거나, 읽기 전용으로 두셔도 됩니다.
                     readOnly
                     className="w-full text-xs text-slate-400 bg-transparent border-none p-0 focus:ring-0 uppercase tracking-wide mt-0.5 cursor-default"
                   />
@@ -170,3 +163,4 @@ export default function EditScreen({ onBack }: EditScreenProps) {
     </div>
   );
 }
+

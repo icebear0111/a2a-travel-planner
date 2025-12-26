@@ -54,6 +54,7 @@ export async function generateItinerary(
             4. Price: Estimated KRW.
             5. **Location**: Specific City or Area name for Google Maps search (e.g., "Kyoto", "Umeda, Osaka").
             6. For the last plan of each day, when returning to the hotel, don't use the word "귀환". Use "호텔 이동: ${hotel.name}" instead.
+            7. For each desc only use keywords.
 
             [CRITICAL - DAY 1 LOGISTICS (FLIGHT START)]
             - **Activity #1 MUST be the FLIGHT DEPARTURE from Origin.**
@@ -61,7 +62,7 @@ export async function generateItinerary(
               - Duration: ${flight.flightDuration}
               - Type: 'flight'
               - Title: "출국: ${intent.destination}행 비행기 탑승"
-              - Desc: "설레는 여행의 시작! (출발: ${flight.originAirportCode}, 소요시간: ${flight.flightDuration})"
+              - Desc: "출발: ${flight.originAirportCode}, 소요시간: ${flight.flightDuration}"
             
             - **Activity #2 MUST be ARRIVAL & IMMIGRATION.**
               - Time: Calculate based on (Start Time + Duration).
@@ -92,7 +93,7 @@ export async function generateItinerary(
             - **Start**: Around 10:00 (Except Day 1).
             - **Lunch**: 12:30 ~ 13:30.
             - **Dinner**: 18:30 ~ 20:00.
-            - **Night**: Suggest ONE activity after dinner (Pub, Night View, Market) before returning to hotel (~22:00).
+            - **Night**: Suggest ONE activity after dinner before returning to hotel (~22:00). If tired, return to hotel directly.
             - Don't cram too many spots. Allow 1.5h per spot.
 
             REQUIRED JSON STRUCTURE:

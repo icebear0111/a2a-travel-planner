@@ -14,7 +14,6 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-// 👇 1. 더미 데이터 삭제하고 스토어 사용
 import { useTripStore } from '@/stores/tripStore';
 
 interface DetailScreenProps {
@@ -22,17 +21,11 @@ interface DetailScreenProps {
 }
 
 export default function DetailScreen({ onBack }: DetailScreenProps) {
-  // 👇 2. 스토어에서 필요한 데이터 가져오기
   const { scheduleData, selectedDay, selectedActivityId } = useTripStore();
 
   const [isSaved, setIsSaved] = useState(false);
 
-  console.log('--- 디버깅 시작 ---');
-  console.log('1. 현재 선택된 날짜:', selectedDay);
-  console.log('2. 클릭한 ID(내가 찾는 놈):', selectedActivityId, typeof selectedActivityId);
-
-  // 👇 3. 선택된 일정 데이터 찾기 (핵심 로직!)
-  // (1) 현재 날짜의 스케줄을 찾고 -> (2) 그 안에서 클릭한 ID와 같은 활동을 찾음
+  // 선택된 일정 데이터 찾기
   const currentDaySchedule = scheduleData.find((d) => d.day === selectedDay);
   const activity = currentDaySchedule?.activities.find((item) => item.id === selectedActivityId);
 
@@ -50,13 +43,11 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
     );
   }
 
-  // (참고) 이미지나 팁 같은 상세 데이터가 Activity 타입에 없다면
-  // 임시로 기본값을 보여주거나, 데이터 구조를 확장해야 합니다.
-  // 여기서는 기존 UI 유지를 위해 임시 데이터를 섞어서 보여줍니다.
+  // 상세 화면에 필요한 추가 데이터 (기본값)
   const displayData = {
     ...activity,
     image:
-      'https://images.unsplash.com/photo-1528360983277-13d9b152c6d1?q=80&w=2070&auto=format&fit=crop', // 기본 이미지 (오사카성 예시)
+      'https://images.unsplash.com/photo-1528360983277-13d9b152c6d1?q=80&w=2070&auto=format&fit=crop',
     rating: '4.8',
     reviews: '1.2k',
     tips: [
@@ -74,7 +65,6 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
     <div className="min-h-screen bg-white pb-24 font-body text-slate-900">
       {/* 1. 히어로 이미지 */}
       <div className="relative h-[45vh] w-full bg-slate-100">
-        {/* 실제 이미지 URL이 있다면 그것을 사용 */}
         <Image
           src={displayData.image}
           alt={displayData.title}
@@ -117,7 +107,6 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
           <div className="flex items-center gap-2 text-white/90 font-medium">
             <MapPin className="w-4 h-4" />
             <span className="text-sm md:text-base">
-              {/* 부제목이 없으면 시간 정보라도 보여줌 */}
               {displayData.desc || displayData.time}
             </span>
           </div>
@@ -229,3 +218,4 @@ export default function DetailScreen({ onBack }: DetailScreenProps) {
     </div>
   );
 }
+

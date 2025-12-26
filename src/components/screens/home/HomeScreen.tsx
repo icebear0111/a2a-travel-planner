@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import Header from './Header';
+import Header from '@/components/ui/Header';
 import { ArrowRight, MapPin, Search } from 'lucide-react';
-import { homeSuggestions, homeRecentTrips } from '@/data/dummyData';
+import { homeSuggestions, homeRecentTrips } from '@/constants/initialData';
 import { useTripStore } from '@/stores/tripStore';
 
 interface HomeScreenProps {
@@ -172,3 +172,4 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
     </div>
   );
 }
+

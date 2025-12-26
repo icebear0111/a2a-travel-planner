@@ -1,6 +1,54 @@
 import { LucideIcon } from 'lucide-react';
 import { ReactElement } from 'react';
 
+// ============================================
+// 사용자 입력 관련 타입
+// ============================================
+
+// 항공권 입력 정보
+export interface FlightInput {
+  originAirportCode: string; // 출발지 공항 코드
+  destAirportCode: string; // 도착지 공항 코드
+  price: number; // 왕복 비용
+  departureDate: string; // 가는 날 (YYYY-MM-DD)
+  departureTime: string; // 가는 날 출발 시간 (HH:MM)
+  returnDate: string; // 오는 날 (YYYY-MM-DD)
+  returnTime: string; // 오는 날 출발 시간 (HH:MM)
+}
+
+// 숙소 입력 정보
+export interface HotelInput {
+  id: string; // 리스트 관리용 유니크 ID
+  name: string; // 숙소 이름
+  price: number; // 숙박비 (총액)
+  checkIn: string; // 체크인 날짜
+  checkOut: string; // 체크아웃 날짜
+}
+
+// 사용자 입력 전체 구조
+export interface UserInput {
+  destination: string;
+  flight: FlightInput;
+  hotels: HotelInput[];
+}
+
+// ============================================
+// AI 분석 결과 타입 (Intent)
+// ============================================
+
+export interface Intent {
+  destination: string;
+  startDate: string;
+  duration: number;
+  companion: string;
+  budgetLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  themes: string[];
+}
+
+// ============================================
+// 활동 및 일정 관련 타입
+// ============================================
+
 export type ActivityType =
   | 'flight'
   | 'transport'

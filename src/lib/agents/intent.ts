@@ -1,39 +1,8 @@
 import OpenAI from 'openai';
+import { UserInput, Intent } from '@/types/trip';
 
-// 1. 입력 데이터 규격
-export interface FlightInput {
-  originAirportCode: string;
-  destAirportCode: string;
-  price: number;
-  departureDate: string;
-  departureTime: string;
-  returnDate: string;
-  returnTime: string;
-}
-
-export interface HotelInput {
-  id: string;
-  name: string;
-  price: number;
-  checkIn: string;
-  checkOut: string;
-}
-
-export interface UserInput {
-  destination: string;
-  flight: FlightInput;
-  hotels: HotelInput[];
-}
-
-// 2. 출력 데이터 규격
-export interface Intent {
-  destination: string;
-  startDate: string;
-  duration: number;
-  companion: string;
-  budgetLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-  themes: string[];
-}
+// 타입 재내보내기 (다른 에이전트에서 사용)
+export type { UserInput, Intent };
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,

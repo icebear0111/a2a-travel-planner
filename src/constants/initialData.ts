@@ -2,7 +2,7 @@ import React from 'react';
 import { Plane, Hotel, MapPin, Train, Camera, Utensils, Coffee } from 'lucide-react';
 import { TripData, DaySchedule, BudgetData, AgentStatus } from '@/types/trip';
 
-// 1. 홈 화면 데이터 (색상 제거)
+// 1. 홈 화면 데이터
 export const homeSuggestions = [
   { text: '오사카 벚꽃 여행' },
   { text: '발리 힐링 휴양' },
@@ -87,7 +87,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '14:00',
         title: '간사이공항 도착',
         desc: '피치항공 MM312',
-        icon: <Plane className="w-4 h-4" />,
+        icon: React.createElement(Plane, { className: 'w-4 h-4' }),
         type: 'flight',
         duration: '-',
       },
@@ -96,7 +96,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '15:30',
         title: '난카이 라피트 탑승',
         desc: '공항 → 난바역',
-        icon: <Train className="w-4 h-4" />,
+        icon: React.createElement(Train, { className: 'w-4 h-4' }),
         type: 'transport',
         duration: '40분',
       },
@@ -105,7 +105,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '16:30',
         title: 'Cross Hotel Osaka 체크인',
         desc: '난바역 근처',
-        icon: <Hotel className="w-4 h-4" />,
+        icon: React.createElement(Hotel, { className: 'w-4 h-4' }),
         type: 'hotel',
         duration: '30분',
       },
@@ -114,7 +114,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '18:00',
         title: '도톤보리 거리',
         desc: '글리코상 & 야경 투어',
-        icon: <Camera className="w-4 h-4" />,
+        icon: React.createElement(Camera, { className: 'w-4 h-4' }),
         type: 'sightseeing',
         duration: '2시간',
       },
@@ -123,7 +123,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '20:00',
         title: '이치란 라멘',
         desc: '돈코츠 라멘 맛집',
-        icon: <Utensils className="w-4 h-4" />,
+        icon: React.createElement(Utensils, { className: 'w-4 h-4' }),
         type: 'food',
         duration: '1시간',
       },
@@ -139,7 +139,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '09:00',
         title: '호텔 조식',
         desc: '1층 레스토랑',
-        icon: <Coffee className="w-4 h-4" />,
+        icon: React.createElement(Coffee, { className: 'w-4 h-4' }),
         type: 'food',
         duration: '1시간',
       },
@@ -148,7 +148,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '10:30',
         title: '오사카성 공원',
         desc: '천수각 & 정원 산책',
-        icon: <Camera className="w-4 h-4" />,
+        icon: React.createElement(Camera, { className: 'w-4 h-4' }),
         type: 'sightseeing',
         duration: '2시간',
       },
@@ -157,7 +157,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '13:00',
         title: '구로몬 시장',
         desc: '점심 & 해산물 투어',
-        icon: <Utensils className="w-4 h-4" />,
+        icon: React.createElement(Utensils, { className: 'w-4 h-4' }),
         type: 'food',
         duration: '2시간',
       },
@@ -166,7 +166,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '15:30',
         title: '신사이바시 쇼핑',
         desc: '메인 쇼핑 거리',
-        icon: <MapPin className="w-4 h-4" />,
+        icon: React.createElement(MapPin, { className: 'w-4 h-4' }),
         type: 'shopping',
         duration: '3시간',
       },
@@ -175,7 +175,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '19:00',
         title: '야키니쿠 저녁',
         desc: '마츠자카규 전문점',
-        icon: <Utensils className="w-4 h-4" />,
+        icon: React.createElement(Utensils, { className: 'w-4 h-4' }),
         type: 'food',
         duration: '1.5시간',
       },
@@ -191,7 +191,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '08:00',
         title: 'USJ 출발',
         desc: '난바역 → USJ역',
-        icon: <Train className="w-4 h-4" />,
+        icon: React.createElement(Train, { className: 'w-4 h-4' }),
         type: 'transport',
         duration: '20분',
       },
@@ -200,7 +200,7 @@ export const initialScheduleData: DaySchedule[] = [
         time: '09:00',
         title: 'USJ 입장',
         desc: '슈퍼 닌텐도 월드',
-        icon: <Camera className="w-4 h-4" />,
+        icon: React.createElement(Camera, { className: 'w-4 h-4' }),
         type: 'theme',
         duration: '8시간',
       },
@@ -208,16 +208,16 @@ export const initialScheduleData: DaySchedule[] = [
   },
 ];
 
-// 5. 결과 화면 - 예산 정보 (color 속성 삭제됨)
+// 5. 결과 화면 - 예산 정보
 export const initialBudgetData: BudgetData = {
   total: 1200000,
   currency: { rate: 900, unit: '¥100' },
   breakdown: [
-    { category: '항공', amount: 450000, icon: <Plane className="w-4 h-4" />, percent: 37.5 },
-    { category: '숙소', amount: 320000, icon: <Hotel className="w-4 h-4" />, percent: 26.7 },
-    { category: '교통', amount: 80000, icon: <Train className="w-4 h-4" />, percent: 6.7 },
-    { category: '식비', amount: 200000, icon: <Utensils className="w-4 h-4" />, percent: 16.7 },
-    { category: '입장/기타', amount: 150000, icon: <Camera className="w-4 h-4" />, percent: 12.5 },
+    { category: '항공', amount: 450000, icon: React.createElement(Plane, { className: 'w-4 h-4' }), percent: 37.5 },
+    { category: '숙소', amount: 320000, icon: React.createElement(Hotel, { className: 'w-4 h-4' }), percent: 26.7 },
+    { category: '교통', amount: 80000, icon: React.createElement(Train, { className: 'w-4 h-4' }), percent: 6.7 },
+    { category: '식비', amount: 200000, icon: React.createElement(Utensils, { className: 'w-4 h-4' }), percent: 16.7 },
+    { category: '입장/기타', amount: 150000, icon: React.createElement(Camera, { className: 'w-4 h-4' }), percent: 12.5 },
   ],
   dailyBudget: [
     { day: 1, amount: 350000 },
@@ -228,60 +228,3 @@ export const initialBudgetData: BudgetData = {
   ],
 };
 
-// 6. 상세 화면 더미 데이터
-export const spotData = {
-  id: 'a4',
-  title: '도톤보리 거리',
-  subtitle: '글리코상 & 야경 투어',
-  image: 'https://images.unsplash.com/photo-1590559899731-a382839e5549?w=800&h=400&fit=crop',
-  time: '18:00 ~ 20:00',
-  duration: '2시간',
-  cost: '₩0 (무료)',
-  rating: 4.8,
-  reviews: 12847,
-  description:
-    '오사카의 대표적인 번화가로, 화려한 네온사인과 글리코 러닝맨 간판이 유명합니다. 다양한 맛집과 쇼핑거리가 밀집해 있어 오사카 여행의 필수 코스입니다.',
-  tips: [
-    '저녁 7시 이후 네온사인이 가장 화려해요',
-    '글리코상 앞은 사진 대기줄이 길어요. 일찍 가세요!',
-    '돈키호테 관람차에서 야경 사진 추천',
-  ],
-  nearbySpots: [
-    { name: '이치란 라멘', type: '맛집', rating: 4.7, distance: '도보 2분' },
-    { name: '돈키호테', type: '쇼핑', rating: 4.5, distance: '도보 1분' },
-    { name: '쿠라 스시', type: '맛집', rating: 4.6, distance: '도보 5분' },
-  ],
-  alternatives: ['신세카이', '아메리카무라', '덴덴타운'],
-};
-
-// 출발지
-export const ORIGIN_AIRPORTS = [
-  { code: 'ICN', name: '인천 (ICN)' },
-  { code: 'GMP', name: '김포 (GMP)' },
-  { code: 'PUS', name: '김해/부산 (PUS)' },
-  { code: 'CJU', name: '제주 (CJU)' },
-  { code: 'TAE', name: '대구 (TAE)' },
-  { code: 'CJJ', name: '청주 (CJJ)' },
-  { code: 'MWX', name: '무안 (MWX)' },
-];
-
-// 도착지
-export const ARRIVAL_AIRPORTS = [
-  { code: 'ICN', name: '인천 (ICN)' },
-  { code: 'GMP', name: '김포 (GMP)' },
-  { code: 'PUS', name: '김해/부산 (PUS)' },
-  { code: 'CJU', name: '제주 (CJU)' },
-  { code: 'NRT', name: '도쿄/나리타 (NRT)' },
-  { code: 'HND', name: '도쿄/하네다 (HND)' },
-  { code: 'KIX', name: '오사카/간사이 (KIX)' },
-  { code: 'FUK', name: '후쿠오카 (FUK)' },
-  { code: 'CTS', name: '삿포로 (CTS)' },
-  { code: 'TPE', name: '타이베이 (TPE)' },
-  { code: 'DAD', name: '다낭 (DAD)' },
-  { code: 'BKK', name: '방콕 (BKK)' },
-  { code: 'SIN', name: '싱가포르 (SIN)' },
-  { code: 'CDG', name: '파리 (CDG)' },
-  { code: 'LHR', name: '런던 (LHR)' },
-  { code: 'JFK', name: '뉴욕 (JFK)' },
-  { code: 'LAX', name: '로스앤젤레스 (LAX)' },
-];

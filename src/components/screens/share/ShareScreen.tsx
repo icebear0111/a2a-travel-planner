@@ -14,18 +14,18 @@ import {
   ArrowUpRight,
   Smartphone,
 } from 'lucide-react';
-import { initialTripData as tripData } from '@/data/dummyData';
+import { useTripStore } from '@/stores/tripStore';
 
 interface ShareScreenProps {
   onBack: () => void;
 }
 
 export default function ShareScreen({ onBack }: ShareScreenProps) {
+  const { tripData } = useTripStore();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
     setCopied(true);
-    // 실제로는 navigator.clipboard.writeText(...) 사용
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -155,7 +155,7 @@ export default function ShareScreen({ onBack }: ShareScreenProps) {
           <div className="space-y-1">
             {[
               { name: 'Google Calendar', icon: Calendar },
-              { name: 'Apple Calendar', icon: Smartphone }, // 적절한 아이콘 대체
+              { name: 'Apple Calendar', icon: Smartphone },
               { name: 'Notion', icon: ArrowUpRight },
             ].map((item, i) => (
               <button
@@ -179,3 +179,4 @@ export default function ShareScreen({ onBack }: ShareScreenProps) {
     </div>
   );
 }
+

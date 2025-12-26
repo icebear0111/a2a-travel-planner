@@ -3,14 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useTripStore } from '@/stores/tripStore';
 
-// Components
-import HomeScreen from '@/components/HomeScreen';
-import SetupScreen from '@/components/SetupScreen'; // 👈 [추가]
-import LoadingScreen from '@/components/LoadingScreen';
-import ResultScreen from '@/components/ResultScreen';
-import DetailScreen from '@/components/DetailScreen';
-import EditScreen from '@/components/EditScreen';
-import ShareScreen from '@/components/ShareScreen';
+// Components (새로운 경로)
+import HomeScreen from '@/components/screens/home/HomeScreen';
+import SetupScreen from '@/components/screens/setup/SetupScreen';
+import LoadingScreen from '@/components/screens/loading/LoadingScreen';
+import ResultScreen from '@/components/screens/result/ResultScreen';
+import DetailScreen from '@/components/screens/detail/DetailScreen';
+import EditScreen from '@/components/screens/edit/EditScreen';
+import ShareScreen from '@/components/screens/share/ShareScreen';
 
 export default function Home() {
   const { setIsMobile } = useTripStore();
@@ -80,23 +80,22 @@ export default function Home() {
         return (
           <HomeScreen
             isMobile={localIsMobile}
-            // 👇 [수정] HomeScreen에서 요청하는 화면으로 이동 (주로 'setup')
             onNavigate={(screen) => navigateTo(screen)}
           />
         );
 
-      case 'setup': // 👈 [추가] 여행 정보 입력 화면
+      case 'setup':
         return (
           <SetupScreen
-            onBack={() => window.history.back()} // 브라우저 뒤로가기 실행
-            onNext={() => navigateTo('loading')} // AI 생성 시작 -> 로딩 화면으로
+            onBack={() => window.history.back()}
+            onNext={() => navigateTo('loading')}
           />
         );
 
       case 'loading':
         return (
           <LoadingScreen
-            onComplete={() => navigateTo('result')} // 로딩 끝 -> 결과 화면
+            onComplete={() => navigateTo('result')}
           />
         );
 

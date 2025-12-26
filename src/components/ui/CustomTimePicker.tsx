@@ -5,10 +5,10 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { ko } from 'date-fns/locale';
 import { Clock } from 'lucide-react';
-import './datepicker-custom.css'; // 기존 CSS 재사용
+import '@/styles/datepicker.css';
 
 interface CustomTimePickerProps {
-  selectedTime: string | undefined; // "HH:MM" 문자열
+  selectedTime: string | undefined;
   onChange: (time: string) => void;
   placeholder?: string;
 }
@@ -20,7 +20,7 @@ export default function CustomTimePicker({
 }: CustomTimePickerProps) {
   // "14:30" 문자열 -> Date 객체로 변환 (오늘 날짜 기준)
   const timeValue = selectedTime
-    ? new Date(`2000-01-01T${selectedTime}`) // 날짜는 상관없음, 시간만 파싱
+    ? new Date(`2000-01-01T${selectedTime}`)
     : null;
 
   // Date 객체 -> "HH:MM" 문자열로 변환하여 부모에게 전달
@@ -44,17 +44,16 @@ export default function CustomTimePicker({
         selected={timeValue}
         onChange={handleTimeChange}
         showTimeSelect
-        showTimeSelectOnly // 달력 없이 시간만 선택
-        timeIntervals={5} // 5분 단위 (필요하면 15, 30, 60 등으로 변경 가능)
+        showTimeSelectOnly
+        timeIntervals={5}
         timeCaption="시간"
         dateFormat="HH:mm"
         placeholderText={placeholder}
-        // 너비 꽉 차게 설정
         wrapperClassName="w-full"
-        // 스타일은 CustomDatePicker와 동일하게 적용
         className="w-full bg-slate-50 pl-10 border border-slate-200 rounded-xl p-3.5 text-sm font-medium focus:ring-2 focus:ring-black/5 focus:border-black/10 transition-all outline-none cursor-pointer placeholder:text-slate-400"
         popperPlacement="bottom-start"
       />
     </div>
   );
 }
+

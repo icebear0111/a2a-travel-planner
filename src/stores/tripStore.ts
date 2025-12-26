@@ -4,148 +4,17 @@ import {
   initialScheduleData,
   initialBudgetData,
   initialAgentStatus,
-} from '@/data/dummyData';
-import { TripStoreState, ActivityType, AgentStatus } from '@/types/trip';
+} from '@/constants/initialData';
+import { TripStoreState, FlightInput, HotelInput, UserInput } from '@/types/trip';
+import { StreamPayload } from '@/types/api';
+import { fetchUnsplashImage } from '@/lib/utils/unsplash';
+import {
+  safeCastActivityType,
+  mapStreamStatusToStoreStatus,
+  generateId,
+} from '@/lib/utils/typeHelpers';
 
-// 1. 사용자 입력 데이터 구조 정의
-// 항공권 정보
-export interface FlightInput {
-  originAirportCode: string; // 출발지
-  destAirportCode: string; // 도착지
-  price: number; // 왕복 비용
-  departureDate: string; // 가는 날
-  departureTime: string;
-  returnDate: string; // 오는 날
-  returnTime: string;
-}
-
-// 숙소 정보 (N개 가능)
-export interface HotelInput {
-  id: string; // 리스트 관리를 위한 유니크 ID
-  name: string; // 숙소 이름
-  price: number; // 숙박비
-  checkIn: string; // 체크인
-  checkOut: string; // 체크아웃
-}
-
-// 사용자 입력 구조
-export interface UserInput {
-  destination: string;
-  flight: FlightInput;
-  hotels: HotelInput[];
-}
-
-// 2. 백엔드 API 응답 데이터 구조 (AI 응답용)
-interface ApiIntent {
-  destination: string;
-  duration: number;
-  startDate: string | null;
-  budgetLevel: string;
-  companion: string;
-  themes: string[];
-}
-
-interface ApiFlight {
-  price: number;
-  airportCode: string;
-  airline: string;
-  flightDuration: string;
-  departureTime: string;
-  returnTime: string;
-}
-
-interface ApiHotel {
-  name: string;
-  price: number;
-  address: string;
-  coordinate: { lat: number; lng: number };
-  rating: string;
-}
-
-interface ApiBudget {
-  status: 'PASS' | 'FAIL';
-  totalCost: number;
-  currency: string;
-}
-
-interface ApiActivity {
-  id: string;
-  title: string;
-  desc?: string;
-  type: string;
-  price?: number;
-  time: string;
-  duration: string;
-  location?: string;
-}
-
-interface ApiDayItem {
-  day: number;
-  activities: ApiActivity[];
-}
-
-interface ApiResultData {
-  intent: ApiIntent;
-  flight: ApiFlight;
-  hotel: ApiHotel;
-  itinerary: ApiDayItem[];
-  budget: ApiBudget;
-}
-
-type StreamPayload =
-  | { type: 'progress'; stepIndex: number; status: 'running' | 'complete'; message: string }
-  | { type: 'result'; data: ApiResultData }
-  | { type: 'error'; message: string };
-
-// 3. 헬퍼 함수
-async function fetchUnsplashImage(query: string): Promise<string> {
-  try {
-    const accessKey = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY;
-    if (!accessKey) throw new Error('Unsplash Key missing');
-
-    const res = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
-        query
-      )}&orientation=landscape&per_page=1`,
-      {
-        headers: { Authorization: `Client-ID ${accessKey}` },
-      }
-    );
-
-    const data = await res.json();
-    if (data.results && data.results.length > 0) {
-      return `${data.results[0].urls.raw}&w=2560&h=1440&fit=crop&q=80&fmt=jpg`;
-    }
-    return 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1200&q=80';
-  } catch (error) {
-    console.error('Unsplash API Error:', error);
-    return 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&q=80';
-  }
-}
-
-const safeCastType = (type: string): ActivityType => {
-  const validTypes: ActivityType[] = [
-    'sightseeing',
-    'food',
-    'transport',
-    'shopping',
-    'hotel',
-    'flight',
-    'theme',
-    'coffee',
-    'etc',
-  ];
-  return validTypes.includes(type as ActivityType) ? (type as ActivityType) : 'etc';
-};
-
-const mapStreamStatusToStoreStatus = (
-  streamStatus: 'running' | 'complete'
-): AgentStatus['status'] => {
-  if (streamStatus === 'complete') return 'complete';
-  return 'searching';
-};
-
-// 4. Store State 확장 인터페이스
+// Store State 확장 인터페이스
 interface ExtendedTripStoreState extends TripStoreState {
   userInput: UserInput;
 
@@ -236,7 +105,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         hotels: [
           ...state.userInput.hotels,
           {
-            id: Math.random().toString(36).substr(2, 9),
+            id: generateId(),
             name: '',
             price: 0,
             checkIn: '',
@@ -345,10 +214,10 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
                 date: `Day ${dayItem.day}`,
                 theme: 'AI 추천 코스',
                 activities: dayItem.activities.map((act) => ({
-                  id: act.id || Math.random().toString(36).substr(2, 9),
+                  id: act.id || generateId(),
                   title: act.title,
                   desc: act.desc || (act.type === 'sightseeing' ? '관광 명소' : '추천 장소'),
-                  type: safeCastType(act.type),
+                  type: safeCastActivityType(act.type),
                   price: act.price || 0,
                   time: act.time,
                   duration: act.duration,

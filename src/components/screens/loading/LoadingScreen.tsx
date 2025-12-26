@@ -95,3 +95,4 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
     </div>
   );
 }
+

@@ -14,53 +14,57 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// ============================================
+// 폴백용 기본 좌표 (AI 실패 시에만 사용)
+// ============================================
+const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  도쿄: { lat: 35.6762, lng: 139.6503 },
+  오사카: { lat: 34.6937, lng: 135.5023 },
+  교토: { lat: 35.0116, lng: 135.7681 },
+  후쿠오카: { lat: 33.5904, lng: 130.4017 },
+  방콕: { lat: 13.7563, lng: 100.5018 },
+  발리: { lat: -8.4095, lng: 115.1889 },
+  파리: { lat: 48.8566, lng: 2.3522 },
+  런던: { lat: 51.5074, lng: -0.1278 },
+};
+
+const DEFAULT_COORDINATE = { lat: 35.6762, lng: 139.6503 };
+
 export async function determineHotel(
   intent: Intent,
   flight: FlightContext,
   input: UserInput
 ): Promise<HotelContext> {
-  console.log(`🏨 [3-Hotel] ${intent.destination} 숙소 데이터 정밀 분석 중...`);
+  console.log(`🏨 [3-Hotel] ${intent.destination} 숙소 분석 중...`);
 
-  // 1️⃣ [Case A] 사용자 입력 숙소 확인
   const userHotels = input.hotels;
   const hasUserHotel = userHotels.length > 0 && userHotels[0].name.trim() !== '';
 
+  // ============================================
+  // Case A: 사용자 지정 숙소 → 위치 검색만
+  // ============================================
   if (hasUserHotel) {
     const primaryHotel = userHotels[0];
-    console.log(`⏩ [3-Hotel] 사용자 지정 숙소 식별: ${primaryHotel.name} (위치 데이터 검색)`);
+    console.log(`📍 [3-Hotel] 사용자 숙소 "${primaryHotel.name}" 위치 검색`);
 
-    // 1박 가격 계산
     const nights = Math.max(1, intent.duration - 1);
     const pricePerNight = Math.round(primaryHotel.price / nights);
 
     try {
-      // 📍 사용자가 입력한 호텔의 '실제 위치'를 AI가 검색
       const response = await openai.chat.completions.create({
         model: 'gpt-5-nano',
         response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
-            content: `
-              You are a **Location Data Expert**.
-              The user has already booked a specific hotel.
-              Your job is to find the **Address** and **Real Coordinates (Lat/Lng)** of that specific hotel.
+            content: `호텔 위치 검색 전문가입니다. 해당 호텔의 실제 주소와 좌표를 찾아주세요.
 
-              [CONTEXT]
-              - Hotel Name: "${primaryHotel.name}"
-              - City: "${intent.destination}"
-
-              [REQUIRED JSON FORMAT]
-              {
-                "address": "string (Real address)",
-                "coordinate": { "lat": number, "lng": number },
-                "rating": "string (Estimated star rating, e.g. '4.5')"
-              }
-            `,
+## 출력 (JSON)
+{"address":"실제 주소","coordinate":{"lat":number,"lng":number},"rating":"평점 (예: 4.5)"}`,
           },
           {
             role: 'user',
-            content: `Find location data for "${primaryHotel.name}" in ${intent.destination}.`,
+            content: `호텔: "${primaryHotel.name}", 도시: ${intent.destination}`,
           },
         ],
       });
@@ -69,29 +73,31 @@ export async function determineHotel(
       if (!content) throw new Error('No content');
       const data = JSON.parse(content);
 
-      console.log(`✅ [3-Hotel] 위치 확보 완료: ${data.address}`);
+      console.log(`✅ [3-Hotel] 위치 확인: ${data.address}`);
 
       return {
         name: primaryHotel.name,
         address: data.address || intent.destination,
         price: pricePerNight,
-        rating: data.rating || 'User Choice',
-        coordinate: data.coordinate || { lat: 37.5665, lng: 126.978 },
+        rating: data.rating || '4.0',
+        coordinate:
+          data.coordinate || FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
       };
     } catch (error) {
-      console.error('❌ [3-Hotel] User Hotel Location Error:', error);
-      // 검색 실패 시 fallback
+      console.error('❌ [3-Hotel] 위치 검색 실패:', error);
       return {
         name: primaryHotel.name,
         address: intent.destination,
         price: pricePerNight,
-        rating: 'User Choice',
-        coordinate: { lat: 37.5665, lng: 126.978 },
+        rating: '4.0',
+        coordinate: FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
       };
     }
   }
 
-  // 2️⃣ [Case B] AI 정밀 추천 (사용자 입력 없을 때)
+  // ============================================
+  // Case B: AI 숙소 추천 (자유롭게)
+  // ============================================
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-5-nano',
@@ -99,49 +105,33 @@ export async function determineHotel(
       messages: [
         {
           role: 'system',
-          content: `
-            You are a **Senior Travel Concierge** specializing in accommodation selection.
-            Your goal is to recommend the **single best basecamp** hotel based on the user's persona and budget.
+          content: `당신은 숙소 추천 전문가입니다.
 
-            [CONTEXT]
-            - Destination: ${intent.destination}
-            - Companion Type: ${intent.companion} (Critical factor for room type & vibe)
-            - Transport Hub: ${flight.destAirportCode} (Consider accessibility)
-            - Duration: ${intent.duration} days
+## 추천 기준
+1. **위치**: 관광 명소 접근성, 대중교통 편리한 중심가
+2. **예산 (1박 기준 KRW)**:
+   - LOW: 8~15만원
+   - MEDIUM: 15~30만원
+   - HIGH: 35만원+
+3. **동행 타입**:
+   - 가족: 넓은 방, 안전한 동네
+   - 커플: 로맨틱, 좋은 뷰
+   - 친구: 번화가, 접근성
+   - 혼자: 가성비, 역세권
 
-            [ANALYSIS TASKS]
-            1. **Location Strategy**: 
-               - Select a hotel located in a safe, central area convenient for sightseeing.
-               - Ensure reasonable access to the airport (${flight.destAirportCode}).
-            
-            2. **Budget Alignment ('price' per night in KRW)**:
-               - **LOW** (~150,000 KRW): Clean hostels, business hotels, or guest houses. Focus on value.
-               - **MEDIUM** (150,000 ~ 300,000 KRW): 3-4 Star city hotels. Balance of comfort and price.
-               - **HIGH** (350,000+ KRW): 5 Star luxury hotels or resorts. Focus on amenities and service.
-               * Current Budget Level: **${intent.budgetLevel}**
+## 중요
+- 실제 존재하는 호텔 추천
+- 정확한 좌표 제공
 
-            3. **Companion Logic**:
-               - **Family**: Spacious rooms, kid-friendly, safe neighborhood.
-               - **Couple**: Romantic vibe, nice view, good amenities.
-               - **Friends**: Close to nightlife/shopping, twin beds availability.
-
-            4. **Data Accuracy**:
-               - Provide REAL coordinates (lat, lng) for the map.
-               - Provide a realistic star rating (e.g., "4.5").
-
-            [REQUIRED JSON FORMAT]
-            {
-              "name": "string",
-              "address": "string",
-              "price": number,
-              "rating": "string",
-              "coordinate": { "lat": number, "lng": number }
-            }
-          `,
+## 출력 (JSON)
+{"name":"호텔명","address":"주소","price":1박가격,"rating":"평점","coordinate":{"lat":number,"lng":number}}`,
         },
         {
           role: 'user',
-          content: `Recommend the best hotel in "${intent.destination}" for a "${intent.budgetLevel}" budget trip with "${intent.companion}".`,
+          content: `목적지: ${intent.destination}
+예산: ${intent.budgetLevel}
+동행: ${intent.companion}
+기간: ${intent.duration}일`,
         },
       ],
     });
@@ -151,9 +141,7 @@ export async function determineHotel(
 
     const data = JSON.parse(content);
     console.log(
-      `✅ [3-Hotel] AI 추천 완료: ${data.name} (1박 ${data.price.toLocaleString()}원, 평점: ${
-        data.rating
-      })`
+      `✅ [3-Hotel] 추천: ${data.name} (1박 ${data.price?.toLocaleString()}원, ⭐${data.rating})`
     );
 
     return {
@@ -161,16 +149,19 @@ export async function determineHotel(
       address: data.address,
       price: data.price,
       rating: data.rating,
-      coordinate: data.coordinate,
+      coordinate: data.coordinate || FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
     };
   } catch (error) {
     console.error('❌ [3-Hotel] Error:', error);
-    // 에러 발생 시 비상용 기본값
+    // 폴백
+    const fallbackPrice =
+      intent.budgetLevel === 'LOW' ? 100000 : intent.budgetLevel === 'HIGH' ? 400000 : 200000;
+
     return {
-      name: 'Central City Hotel',
+      name: `${intent.destination} 시티 호텔`,
       address: intent.destination,
-      price: 150000,
-      coordinate: { lat: 37.5665, lng: 126.978 },
+      price: fallbackPrice,
+      coordinate: FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
       rating: '4.0',
     };
   }

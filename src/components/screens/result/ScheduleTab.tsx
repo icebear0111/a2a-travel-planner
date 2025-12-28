@@ -16,19 +16,19 @@ export default function ScheduleTab({ onNavigate }: ScheduleTabProps) {
   return (
     <div className="animate-fadeInUp">
       {/* 날짜 선택 */}
-      <div className="flex gap-3 overflow-x-auto pb-6 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">
         {scheduleData.map((day) => (
           <button
             key={day.day}
             onClick={() => setSelectedDay(day.day)}
-            className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-2xl border transition-all ${
+            className={`flex-shrink-0 flex flex-col items-center justify-center w-14 h-16 rounded-xl border-2 transition-all ${
               selectedDay === day.day
-                ? 'bg-black text-white border-black shadow-lg transform scale-105'
-                : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'
+                ? 'bg-black text-white border-black shadow-lg'
+                : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'
             }`}
           >
-            <span className="text-xs font-medium">Day</span>
-            <span className="text-xl font-bold">{day.day}</span>
+            <span className="text-[10px] font-medium opacity-70">Day</span>
+            <span className="text-lg font-bold">{day.day}</span>
           </button>
         ))}
       </div>
@@ -109,4 +109,3 @@ export default function ScheduleTab({ onNavigate }: ScheduleTabProps) {
     </div>
   );
 }
-

@@ -39,7 +39,7 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
   return (
     <div className="min-h-full bg-white font-body text-slate-900 pb-20">
       {/* 1. 헤더 */}
-      <Header isMobile={isMobile} />
+      <Header isMobile={isMobile} onNavigate={onNavigate} />
 
       <main className="max-w-6xl mx-auto px-6 pt-12 md:pt-20">
         {/* 2. 히어로 섹션 */}
@@ -165,11 +165,15 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
         </section>
 
         {/* 5. Footer */}
-        <footer className="py-10 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-400">© 2025 Triply. All rights reserved.</p>
+        <footer className="py-10 border-t border-slate-100 text-center text-xs text-slate-400">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <button className="hover:text-slate-600 transition-colors">이용약관</button>
+            <span>|</span>
+            <button className="hover:text-slate-600 transition-colors">개인정보처리방침</button>
+          </div>
+          <p>© 2025 Triply. All rights reserved.</p>
         </footer>
       </main>
     </div>
   );
 }
-

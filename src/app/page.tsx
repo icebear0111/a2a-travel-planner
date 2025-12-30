@@ -11,6 +11,8 @@ import ResultScreen from '@/components/screens/result/ResultScreen';
 import DetailScreen from '@/components/screens/detail/DetailScreen';
 import EditScreen from '@/components/screens/edit/EditScreen';
 import ShareScreen from '@/components/screens/share/ShareScreen';
+import LoginScreen from '@/components/screens/auth/LoginScreen';
+import SignupScreen from '@/components/screens/auth/SignupScreen';
 
 export default function Home() {
   const { setIsMobile } = useTripStore();
@@ -77,27 +79,15 @@ export default function Home() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
-        return (
-          <HomeScreen
-            isMobile={localIsMobile}
-            onNavigate={(screen) => navigateTo(screen)}
-          />
-        );
+        return <HomeScreen isMobile={localIsMobile} onNavigate={(screen) => navigateTo(screen)} />;
 
       case 'setup':
         return (
-          <SetupScreen
-            onBack={() => window.history.back()}
-            onNext={() => navigateTo('loading')}
-          />
+          <SetupScreen onBack={() => window.history.back()} onNext={() => navigateTo('loading')} />
         );
 
       case 'loading':
-        return (
-          <LoadingScreen
-            onComplete={() => navigateTo('result')}
-          />
-        );
+        return <LoadingScreen onComplete={() => navigateTo('result')} />;
 
       case 'result':
         return <ResultScreen setCurrentScreen={navigateTo} />;
@@ -110,6 +100,22 @@ export default function Home() {
 
       case 'share':
         return <ShareScreen onBack={() => window.history.back()} />;
+
+      case 'login':
+        return (
+          <LoginScreen
+            onBack={() => window.history.back()}
+            onNavigate={(screen) => navigateTo(screen)}
+          />
+        );
+
+      case 'signup':
+        return (
+          <SignupScreen
+            onBack={() => window.history.back()}
+            onNavigate={(screen) => navigateTo(screen)}
+          />
+        );
 
       default:
         return <HomeScreen isMobile={localIsMobile} onNavigate={(screen) => navigateTo(screen)} />;

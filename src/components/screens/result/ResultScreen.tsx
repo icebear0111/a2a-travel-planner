@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, Share2, Heart, Calendar, Map, CreditCard } from 'lucide-react';
+import { ChevronLeft, Share2, Save, Check, Calendar, Map, CreditCard, Loader2 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
+import { useAuthStore } from '@/stores/authStore';
 import ScheduleTab from './ScheduleTab';
 import MapTab from './MapTab';
 import BudgetTab from './BudgetTab';
@@ -13,10 +14,29 @@ interface ResultScreenProps {
 }
 
 export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
-  const { tripData } = useTripStore();
+  const { tripData, saveCurrentTrip, isSaving, currentTripId } = useTripStore();
+  const { user } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<'schedule' | 'map' | 'budget'>('schedule');
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(!!currentTripId);
+
+  const handleSave = async () => {
+    if (!user) {
+      alert('로그인이 필요합니다.');
+      setCurrentScreen('login');
+      return;
+    }
+
+    if (isSaved) {
+      // 이미 저장됨
+      return;
+    }
+
+    const tripId = await saveCurrentTrip(user.uid);
+    if (tripId) {
+      setIsSaved(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white pb-20">
@@ -41,14 +61,24 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
             <ChevronLeft className="w-6 h-6" />
           </button>
           <div className="flex gap-2">
+            {/* 저장 버튼 */}
             <button
-              onClick={() => setIsSaved(!isSaved)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-colors ${
-                isSaved ? 'bg-rose-500 text-white' : 'bg-white/20 text-white hover:bg-white/30'
+              onClick={handleSave}
+              disabled={isSaving || isSaved}
+              className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
+                isSaved ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white hover:bg-white/30'
               }`}
+              title={isSaved ? '저장됨' : '내 여행에 저장'}
             >
-              <Heart className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
+              {isSaving ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : isSaved ? (
+                <Check className="w-5 h-5" />
+              ) : (
+                <Save className="w-5 h-5" />
+              )}
             </button>
+            {/* 공유 버튼 */}
             <button
               onClick={() => setCurrentScreen('share')}
               className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
@@ -103,4 +133,3 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
     </div>
   );
 }
-

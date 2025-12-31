@@ -87,7 +87,7 @@ export default function HotelSection({ isUndecided, onUndecidedChange }: HotelSe
             <div key={hotel.id} className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-medium text-slate-400">#{index + 1}</span>
-                {userInput.hotels.length > 0 && (
+                {userInput.hotels.length > 1 && (
                   <button
                     onClick={() => removeHotel(hotel.id)}
                     className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all"
@@ -163,4 +163,3 @@ export default function HotelSection({ isUndecided, onUndecidedChange }: HotelSe
     </section>
   );
 }
-

@@ -28,16 +28,12 @@ export default function Header({
 
   // 로고 클릭 시 홈으로 이동
   const handleLogoClick = () => {
-    if (variant === 'login' || variant === 'signup') {
-      onNavigate?.('home');
-    }
+    onNavigate?.('home');
   };
 
   const handleLogout = async () => {
     await signOut();
   };
-
-  const isAuthPage = variant === 'login' || variant === 'signup';
 
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
@@ -61,8 +57,7 @@ export default function Header({
           ) : (
             <button
               onClick={handleLogoClick}
-              className="flex items-center gap-2"
-              disabled={!isAuthPage}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center">
                 <Compass className="w-5 h-5 text-white" />
@@ -81,14 +76,20 @@ export default function Header({
             </button>
           ) : (
             <nav className="flex gap-6 text-sm font-medium text-slate-500 items-center">
-              <button className="hover:text-black transition-colors">Trips</button>
-              <button className="hover:text-black transition-colors">Saved</button>
+              {user && (
+                <button
+                  onClick={() => onNavigate?.('mytrips')}
+                  className="hover:text-black transition-colors"
+                >
+                  내 여행
+                </button>
+              )}
 
               {user ? (
                 // 로그인 상태: 이름 + 로그아웃
                 <div className="flex items-center gap-3">
                   <span className="text-black max-w-32 truncate">
-                    {user.displayName || user.email?.split('@')[0]}
+                    {user.displayName || user.email?.split('@')[0]}님
                   </span>
                   <button
                     onClick={handleLogout}

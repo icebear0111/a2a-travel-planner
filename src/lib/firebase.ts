@@ -10,6 +10,21 @@ import {
   signInWithPopup,
   User,
 } from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  serverTimestamp,
+  Timestamp,
+} from 'firebase/firestore';
+import type { UserInput, TripData, DaySchedule, BudgetData } from '@/types/trip';
 
 // Firebase 설정
 const firebaseConfig = {
@@ -24,6 +39,7 @@ const firebaseConfig = {
 // Firebase 앱 초기화 (중복 방지)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
+const db = getFirestore(app);
 
 // Google Provider
 const googleProvider = new GoogleAuthProvider();
@@ -76,6 +92,137 @@ export function onAuthChange(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);
 }
 
+// ============================================
+// Firestore - 여행 계획 관련 함수들
+// ============================================
+
+// Firestore에 저장할 Activity 타입 (icon 제외)
+type SavedActivity = Omit<DaySchedule['activities'][0], 'icon'>;
+
+// Firestore에 저장할 DaySchedule 타입 (icon 제외)
+type SavedDaySchedule = Omit<DaySchedule, 'activities'> & {
+  activities: SavedActivity[];
+};
+
+// Firestore에 저장할 여행 데이터 타입 (icon 제외)
+export interface SavedTrip {
+  id?: string;
+  userInput: UserInput;
+  tripData: TripData;
+  scheduleData: SavedDaySchedule[];
+  budgetData: Omit<BudgetData, 'breakdown'> & {
+    breakdown: Omit<BudgetData['breakdown'][0], 'icon'>[];
+  };
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/**
+ * 여행 계획 저장
+ */
+export async function saveTrip(
+  userId: string,
+  data: Omit<SavedTrip, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> {
+  const tripsRef = collection(db, 'users', userId, 'trips');
+  const docRef = await addDoc(tripsRef, {
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/**
+ * 여행 계획 목록 조회
+ */
+export async function getTrips(userId: string): Promise<SavedTrip[]> {
+  const tripsRef = collection(db, 'users', userId, 'trips');
+  const q = query(tripsRef, orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as SavedTrip[];
+}
+
+/**
+ * 특정 여행 계획 조회
+ */
+export async function getTrip(userId: string, tripId: string): Promise<SavedTrip | null> {
+  const tripRef = doc(db, 'users', userId, 'trips', tripId);
+  const snapshot = await getDoc(tripRef);
+
+  if (!snapshot.exists()) return null;
+
+  return {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as SavedTrip;
+}
+
+/**
+ * 여행 계획 수정
+ */
+export async function updateTrip(
+  userId: string,
+  tripId: string,
+  data: Partial<Omit<SavedTrip, 'id' | 'createdAt' | 'updatedAt'>>
+): Promise<void> {
+  const tripRef = doc(db, 'users', userId, 'trips', tripId);
+  await updateDoc(tripRef, {
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * 여행 계획 삭제
+ */
+export async function deleteTrip(userId: string, tripId: string): Promise<void> {
+  const tripRef = doc(db, 'users', userId, 'trips', tripId);
+  await deleteDoc(tripRef);
+}
+
+// ============================================
+// Firestore - 공유 여행 관련 함수들
+// ============================================
+
+// 공유 여행 데이터 타입
+export interface SharedTrip extends Omit<SavedTrip, 'id'> {
+  id?: string;
+  sharedBy: string; // 공유한 사용자 이름
+  sharedAt?: Timestamp;
+}
+
+/**
+ * 여행 공유하기 (공개 컬렉션에 저장)
+ */
+export async function shareTrip(data: Omit<SharedTrip, 'id' | 'sharedAt'>): Promise<string> {
+  const sharedTripsRef = collection(db, 'shared_trips');
+  const docRef = await addDoc(sharedTripsRef, {
+    ...data,
+    sharedAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+/**
+ * 공유된 여행 조회 (누구나 접근 가능)
+ */
+export async function getSharedTrip(shareId: string): Promise<SharedTrip | null> {
+  const tripRef = doc(db, 'shared_trips', shareId);
+  const snapshot = await getDoc(tripRef);
+
+  if (!snapshot.exists()) return null;
+
+  return {
+    id: snapshot.id,
+    ...snapshot.data(),
+  } as SharedTrip;
+}
+
 // 타입 내보내기
 export type { User };
-export { auth };
+export { auth, db };

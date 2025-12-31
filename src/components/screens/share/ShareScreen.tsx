@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import {
   X,
@@ -12,22 +12,47 @@ import {
   ArrowUpRight,
   Plane,
   Wallet,
+  Loader2,
 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
+import { useAuthStore } from '@/stores/authStore';
 
 interface ShareScreenProps {
   onBack: () => void;
 }
 
 export default function ShareScreen({ onBack }: ShareScreenProps) {
-  const { tripData, userInput, budgetData } = useTripStore();
+  const { tripData, userInput, budgetData, shareTripAndGetUrl, isSharing, currentShareId } =
+    useTripStore();
+  const { user } = useAuthStore();
   const [copied, setCopied] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
 
-  // 공유 링크 생성 (목적지 기반)
-  const shareSlug = userInput.destination
-    ? userInput.destination.toLowerCase().replace(/\s+/g, '-')
-    : 'my-trip';
-  const shareUrl = `https://a2a.travel/trip/${shareSlug}-${Date.now().toString(36)}`;
+  // 공유 URL 생성
+  useEffect(() => {
+    const generateShareUrl = async () => {
+      // 이미 공유된 경우 기존 URL 사용
+      if (currentShareId) {
+        setShareUrl(`${window.location.origin}?view=shared&id=${currentShareId}`);
+        return;
+      }
+
+      // 로그인하지 않은 경우 임시 URL 표시
+      if (!user) {
+        setShareUrl(null);
+        return;
+      }
+
+      // 공유 URL 생성
+      const userName = user.displayName || user.email?.split('@')[0] || '익명';
+      const shareId = await shareTripAndGetUrl(userName);
+      if (shareId) {
+        setShareUrl(`${window.location.origin}?view=shared&id=${shareId}`);
+      }
+    };
+
+    generateShareUrl();
+  }, [user, currentShareId, shareTripAndGetUrl]);
 
   // 예산 포맷
   const formatBudget = (amount: number) => {
@@ -38,6 +63,8 @@ export default function ShareScreen({ onBack }: ShareScreenProps) {
   };
 
   const handleCopy = async () => {
+    if (!shareUrl) return;
+
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
@@ -129,7 +156,7 @@ export default function ShareScreen({ onBack }: ShareScreenProps) {
               </div>
             </div>
 
-            {/* 다운로드 버튼 */}
+            {/* PDF 다운로드 버튼 */}
             <div className="mt-6 pt-5 border-t border-slate-100">
               <button className="w-full py-3.5 bg-black text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-colors shadow-lg shadow-black/20">
                 <Download className="w-5 h-5" />
@@ -144,23 +171,47 @@ export default function ShareScreen({ onBack }: ShareScreenProps) {
           <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
             <Link className="w-4 h-4" /> 링크 공유
           </h3>
-          <div className="flex gap-2">
-            <div className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 truncate font-medium">
-              {shareUrl}
+
+          {!user ? (
+            // 비로그인 상태
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-4 text-center">
+              <p className="text-sm text-slate-500 mb-2">링크 공유를 위해 로그인이 필요합니다</p>
             </div>
-            <button
-              onClick={handleCopy}
-              className={`px-4 py-3 rounded-xl transition-all font-bold border ${
-                copied
-                  ? 'bg-black text-white border-black'
-                  : 'bg-white text-slate-900 border-slate-200 hover:border-slate-400'
-              }`}
-            >
-              {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-            </button>
-          </div>
-          {copied && (
-            <p className="text-xs text-emerald-600 mt-2 font-medium">✓ 클립보드에 복사되었습니다</p>
+          ) : isSharing ? (
+            // 공유 URL 생성 중
+            <div className="flex items-center justify-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              <span className="text-sm text-slate-500">공유 링크 생성 중...</span>
+            </div>
+          ) : shareUrl ? (
+            // 공유 URL 생성 완료
+            <>
+              <div className="flex gap-2">
+                <div className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 truncate font-medium">
+                  {shareUrl}
+                </div>
+                <button
+                  onClick={handleCopy}
+                  className={`px-4 py-3 rounded-xl transition-all font-bold border ${
+                    copied
+                      ? 'bg-black text-white border-black'
+                      : 'bg-white text-slate-900 border-slate-200 hover:border-slate-400'
+                  }`}
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                </button>
+              </div>
+              {copied && (
+                <p className="text-xs text-emerald-600 mt-2 font-medium">
+                  ✓ 클립보드에 복사되었습니다
+                </p>
+              )}
+            </>
+          ) : (
+            // URL 생성 실패
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-4 text-center">
+              <p className="text-sm text-slate-500">공유 링크 생성에 실패했습니다</p>
+            </div>
           )}
         </div>
 

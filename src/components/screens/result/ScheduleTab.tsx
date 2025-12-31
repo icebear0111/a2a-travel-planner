@@ -6,9 +6,10 @@ import { useTripStore } from '@/stores/tripStore';
 
 interface ScheduleTabProps {
   onNavigate: (screen: string) => void;
+  readOnly?: boolean;
 }
 
-export default function ScheduleTab({ onNavigate }: ScheduleTabProps) {
+export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTabProps) {
   const { scheduleData, selectedDay, setSelectedDay, setSelectedActivityId } = useTripStore();
 
   const currentSchedule = scheduleData.find((d) => d.day === selectedDay);
@@ -49,14 +50,19 @@ export default function ScheduleTab({ onNavigate }: ScheduleTabProps) {
           currentSchedule?.activities.map((item, index) => {
             const isLastItem = index === (currentSchedule?.activities.length || 0) - 1;
 
+            const handleClick = () => {
+              if (readOnly) return;
+              setSelectedActivityId(item.id);
+              onNavigate('detail');
+            };
+
             return (
               <div
                 key={item.id}
-                className="flex gap-4 group cursor-pointer pb-6 last:pb-0"
-                onClick={() => {
-                  setSelectedActivityId(item.id);
-                  onNavigate('detail');
-                }}
+                className={`flex gap-4 group pb-6 last:pb-0 ${
+                  readOnly ? 'cursor-default' : 'cursor-pointer'
+                }`}
+                onClick={handleClick}
               >
                 {/* 시간 */}
                 <div className="w-14 pt-1 text-right flex-shrink-0">
@@ -76,7 +82,11 @@ export default function ScheduleTab({ onNavigate }: ScheduleTabProps) {
 
                 {/* 카드 */}
                 <div className="flex-1 min-w-0">
-                  <div className="bg-white hover:bg-slate-50 border border-slate-100 hover:border-slate-300 hover:shadow-sm rounded-2xl p-4 transition-all duration-200">
+                  <div
+                    className={`bg-white border border-slate-100 rounded-2xl p-4 transition-all duration-200 ${
+                      readOnly ? '' : 'hover:bg-slate-50 hover:border-slate-300 hover:shadow-sm'
+                    }`}
+                  >
                     <div className="flex justify-between items-start mb-1">
                       <h3 className="font-bold text-slate-900 truncate pr-2">{item.title}</h3>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex-shrink-0 bg-slate-100 text-slate-600 border border-slate-200">
@@ -97,15 +107,17 @@ export default function ScheduleTab({ onNavigate }: ScheduleTabProps) {
         )}
       </div>
 
-      {/* 편집 버튼 */}
-      <div className="mt-8 pb-8">
-        <button
-          onClick={() => onNavigate('edit')}
-          className="w-full py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-600 font-bold flex items-center justify-center gap-2 hover:bg-black hover:text-white hover:border-black transition-all"
-        >
-          <EditIcon className="w-5 h-5" /> 일정 편집
-        </button>
-      </div>
+      {/* 편집 버튼 (읽기 전용이 아닐 때만 표시) */}
+      {!readOnly && (
+        <div className="mt-8 pb-8">
+          <button
+            onClick={() => onNavigate('edit')}
+            className="w-full py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-600 font-bold flex items-center justify-center gap-2 hover:bg-black hover:text-white hover:border-black transition-all"
+          >
+            <EditIcon className="w-5 h-5" /> 일정 편집
+          </button>
+        </div>
+      )}
     </div>
   );
 }

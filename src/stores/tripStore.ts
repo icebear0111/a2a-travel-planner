@@ -13,10 +13,16 @@ import {
   mapStreamStatusToStoreStatus,
   generateId,
 } from '@/lib/utils/typeHelpers';
+import { saveTrip, getTrips, getTrip, deleteTrip, SavedTrip, shareTrip, getSharedTrip, SharedTrip } from '@/lib/firebase';
 
 // Store State 확장 인터페이스
 interface ExtendedTripStoreState extends TripStoreState {
   userInput: UserInput;
+  savedTrips: SavedTrip[];
+  currentTripId: string | null;
+  isSaving: boolean;
+  isSharing: boolean;
+  currentShareId: string | null;
 
   // 액션 함수들
   setUserInput: (data: Partial<UserInput>) => void; // 전체 업데이트용
@@ -26,6 +32,17 @@ interface ExtendedTripStoreState extends TripStoreState {
   updateHotel: (id: string, data: Partial<HotelInput>) => void;
 
   generateTrip: () => Promise<void>;
+
+  // Firestore 관련 액션
+  saveCurrentTrip: (userId: string) => Promise<string | null>;
+  loadMyTrips: (userId: string) => Promise<void>;
+  loadTrip: (userId: string, tripId: string) => Promise<void>;
+  deleteSavedTrip: (userId: string, tripId: string) => Promise<void>;
+  resetTrip: () => void;
+
+  // 공유 관련 액션
+  shareTripAndGetUrl: (userName: string) => Promise<string | null>;
+  loadSharedTrip: (shareId: string) => Promise<SharedTrip | null>;
 }
 
 // 5. Store 구현
@@ -42,6 +59,13 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   selectedDay: 1,
   selectedActivityId: null,
   isGenerating: false,
+
+  // Firestore 관련 상태
+  savedTrips: [],
+  currentTripId: null,
+  isSaving: false,
+  isSharing: false,
+  currentShareId: null,
 
   userInput: {
     destination: '',
@@ -367,4 +391,187 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         },
       };
     }),
+
+  // ============================================
+  // Firestore 관련 액션
+  // ============================================
+
+  // 현재 여행 계획 저장
+  saveCurrentTrip: async (userId: string) => {
+    const { userInput, tripData, scheduleData, budgetData } = get();
+
+    // 유효성 검사
+    if (!tripData.title || tripData.title === '여행 계획') {
+      alert('저장할 여행 계획이 없습니다.');
+      return null;
+    }
+
+    set({ isSaving: true });
+
+    try {
+      // icon 필드 제거 (Firestore 저장 불가)
+      const cleanScheduleData = scheduleData.map((day) => ({
+        ...day,
+        activities: day.activities.map(({ icon, ...rest }) => rest),
+      }));
+
+      const cleanBudgetData = {
+        ...budgetData,
+        breakdown: budgetData.breakdown.map(({ icon, ...rest }) => rest),
+      };
+
+      const tripId = await saveTrip(userId, {
+        userInput,
+        tripData,
+        scheduleData: cleanScheduleData,
+        budgetData: cleanBudgetData,
+      });
+
+      set({ currentTripId: tripId, isSaving: false });
+      return tripId;
+    } catch (error) {
+      console.error('여행 저장 실패:', error);
+      set({ isSaving: false });
+      return null;
+    }
+  },
+
+  // 내 여행 목록 불러오기
+  loadMyTrips: async (userId: string) => {
+    try {
+      const trips = await getTrips(userId);
+      set({ savedTrips: trips });
+    } catch (error) {
+      console.error('여행 목록 불러오기 실패:', error);
+    }
+  },
+
+  // 특정 여행 불러오기
+  loadTrip: async (userId: string, tripId: string) => {
+    try {
+      const trip = await getTrip(userId, tripId);
+      if (trip) {
+        set({
+          userInput: trip.userInput,
+          tripData: trip.tripData,
+          scheduleData: trip.scheduleData as typeof initialScheduleData,
+          budgetData: trip.budgetData as typeof initialBudgetData,
+          currentTripId: tripId,
+          selectedDay: 1,
+        });
+      }
+    } catch (error) {
+      console.error('여행 불러오기 실패:', error);
+    }
+  },
+
+  // 저장된 여행 삭제
+  deleteSavedTrip: async (userId: string, tripId: string) => {
+    try {
+      await deleteTrip(userId, tripId);
+      set((state) => ({
+        savedTrips: state.savedTrips.filter((t) => t.id !== tripId),
+        currentTripId: state.currentTripId === tripId ? null : state.currentTripId,
+      }));
+    } catch (error) {
+      console.error('여행 삭제 실패:', error);
+    }
+  },
+
+  // 여행 상태 초기화
+  resetTrip: () =>
+    set({
+      tripData: initialTripData,
+      scheduleData: initialScheduleData,
+      budgetData: initialBudgetData,
+      currentTripId: null,
+      currentShareId: null,
+      selectedDay: 1,
+      selectedActivityId: null,
+      userInput: {
+        destination: '',
+        flight: {
+          originAirportCode: '',
+          destAirportCode: '',
+          price: 0,
+          departureDate: '',
+          departureTime: '10:00',
+          returnDate: '',
+          returnTime: '18:00',
+        },
+        hotels: [{ id: '1', name: '', price: 0, checkIn: '', checkOut: '' }],
+      },
+    }),
+
+  // ============================================
+  // 공유 관련 액션
+  // ============================================
+
+  // 여행 공유하기 (URL 생성)
+  shareTripAndGetUrl: async (userName: string) => {
+    const { userInput, tripData, scheduleData, budgetData, currentShareId } = get();
+
+    // 이미 공유된 경우 기존 ID 반환
+    if (currentShareId) {
+      return currentShareId;
+    }
+
+    // 유효성 검사
+    if (!tripData.title || tripData.title === '여행 계획') {
+      alert('공유할 여행 계획이 없습니다.');
+      return null;
+    }
+
+    set({ isSharing: true });
+
+    try {
+      // icon 필드 제거
+      const cleanScheduleData = scheduleData.map((day) => ({
+        ...day,
+        activities: day.activities.map(({ icon, ...rest }) => rest),
+      }));
+
+      const cleanBudgetData = {
+        ...budgetData,
+        breakdown: budgetData.breakdown.map(({ icon, ...rest }) => rest),
+      };
+
+      const shareId = await shareTrip({
+        userInput,
+        tripData,
+        scheduleData: cleanScheduleData,
+        budgetData: cleanBudgetData,
+        sharedBy: userName,
+      });
+
+      set({ currentShareId: shareId, isSharing: false });
+      return shareId;
+    } catch (error) {
+      console.error('여행 공유 실패:', error);
+      set({ isSharing: false });
+      return null;
+    }
+  },
+
+  // 공유된 여행 불러오기
+  loadSharedTrip: async (shareId: string) => {
+    try {
+      const sharedTrip = await getSharedTrip(shareId);
+      if (sharedTrip) {
+        set({
+          userInput: sharedTrip.userInput,
+          tripData: sharedTrip.tripData,
+          scheduleData: sharedTrip.scheduleData as typeof initialScheduleData,
+          budgetData: sharedTrip.budgetData as typeof initialBudgetData,
+          currentShareId: shareId,
+          selectedDay: 1,
+        });
+        return sharedTrip;
+      }
+      return null;
+    } catch (error) {
+      console.error('공유 여행 불러오기 실패:', error);
+      return null;
+    }
+  },
 }));

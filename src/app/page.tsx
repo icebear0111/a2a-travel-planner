@@ -13,6 +13,8 @@ import EditScreen from '@/components/screens/edit/EditScreen';
 import ShareScreen from '@/components/screens/share/ShareScreen';
 import LoginScreen from '@/components/screens/auth/LoginScreen';
 import SignupScreen from '@/components/screens/auth/SignupScreen';
+import MyTripsScreen from '@/components/screens/trips/MyTripsScreen';
+import SharedTripScreen from '@/components/screens/shared/SharedTripScreen';
 
 export default function Home() {
   const { setIsMobile } = useTripStore();
@@ -20,6 +22,7 @@ export default function Home() {
   // 1. 화면 상태 관리
   const [currentScreen, setCurrentScreen] = useState('home');
   const [localIsMobile, setLocalIsMobile] = useState(false);
+  const [sharedTripId, setSharedTripId] = useState<string | null>(null);
 
   // ==================================================================
   // 🚀 [핵심] 브라우저 히스토리(뒤로가기) 연동 로직
@@ -56,7 +59,15 @@ export default function Home() {
     setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      if (view) setCurrentScreen(view);
+      const id = params.get('id');
+
+      // 공유 링크 처리
+      if (view === 'shared' && id) {
+        setSharedTripId(id);
+        setCurrentScreen('shared');
+      } else if (view) {
+        setCurrentScreen(view);
+      }
     }, 0);
 
     return () => window.removeEventListener('popstate', handlePopState);
@@ -115,6 +126,16 @@ export default function Home() {
             onBack={() => window.history.back()}
             onNavigate={(screen) => navigateTo(screen)}
           />
+        );
+
+      case 'mytrips':
+        return <MyTripsScreen onNavigate={(screen) => navigateTo(screen)} />;
+
+      case 'shared':
+        return sharedTripId ? (
+          <SharedTripScreen shareId={sharedTripId} onNavigate={(screen) => navigateTo(screen)} />
+        ) : (
+          <HomeScreen isMobile={localIsMobile} onNavigate={(screen) => navigateTo(screen)} />
         );
 
       default:

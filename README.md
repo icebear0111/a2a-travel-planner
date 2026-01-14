@@ -268,12 +268,6 @@ npm run dev
 
 ---
 
-## 📄 라이선스
-
-MIT License
-
----
-
 ## 🙏 크레딧
 
 - [Next.js](https://nextjs.org/)

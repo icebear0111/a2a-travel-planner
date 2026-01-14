@@ -22,6 +22,7 @@ import HotelSection from './HotelSection';
 interface SetupScreenProps {
   onBack: () => void;
   onNext: () => void;
+  onNavigate: (screen: string) => void;
 }
 
 type Step = 'dates' | 'flight' | 'hotel' | 'places';
@@ -385,7 +386,7 @@ function InlineCalendar({
 // ============================================
 // 메인 컴포넌트
 // ============================================
-export default function SetupScreen({ onBack, onNext }: SetupScreenProps) {
+export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenProps) {
   const { userInput, setFlightInput, setUserInput, generateTrip } = useTripStore();
 
   const [currentStep, setCurrentStep] = useState<Step>('dates');
@@ -493,7 +494,7 @@ export default function SetupScreen({ onBack, onNext }: SetupScreenProps) {
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] font-body text-slate-900 selection:bg-black selection:text-white">
-      <Header showBack onBack={goPrev} />
+      <Header showBack onBack={goPrev} onNavigate={onNavigate} />
 
       <main className="max-w-2xl mx-auto px-6 py-12 pb-32">
         <div className={`transition-all duration-500 ease-out ${contentAnimationClass}`}>

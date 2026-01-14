@@ -94,7 +94,11 @@ export default function Home() {
 
       case 'setup':
         return (
-          <SetupScreen onBack={() => window.history.back()} onNext={() => navigateTo('loading')} />
+          <SetupScreen
+            onBack={() => window.history.back()}
+            onNext={() => navigateTo('loading')}
+            onNavigate={navigateTo}
+          />
         );
 
       case 'loading':

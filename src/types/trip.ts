@@ -1,5 +1,5 @@
 import { LucideIcon } from 'lucide-react';
-import { ReactElement } from 'react';
+import { ReactElement, ReactNode } from 'react';
 
 // ============================================
 // 사용자 입력 관련 타입
@@ -68,7 +68,7 @@ export interface Activity {
   time: string;
   title: string;
   desc: string;
-  icon?: ReactElement<LucideIcon>; // Lucide 아이콘 컴포넌트
+  icon?: ReactNode; // Lucide 아이콘 컴포넌트
   type: ActivityType;
   duration: string;
   price?: number;
@@ -98,7 +98,7 @@ export interface BudgetData {
   breakdown: {
     category: string;
     amount: number;
-    icon?: ReactElement<LucideIcon>;
+    icon?: ReactNode;
     percent: number;
   }[];
   dailyBudget: { day: number; amount: number }[];

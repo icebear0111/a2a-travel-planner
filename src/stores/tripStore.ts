@@ -1,11 +1,32 @@
 import { create } from 'zustand';
+import { initialAgentStatus } from '@/constants/initialData';
 import {
-  initialTripData,
-  initialScheduleData,
-  initialBudgetData,
-  initialAgentStatus,
-} from '@/constants/initialData';
-import { TripStoreState, FlightInput, HotelInput, UserInput } from '@/types/trip';
+  TripStoreState,
+  FlightInput,
+  HotelInput,
+  UserInput,
+  TripData,
+  DaySchedule,
+  BudgetData,
+} from '@/types/trip';
+
+// 빈 초기값 정의
+const emptyTripData: TripData = {
+  title: '',
+  subtitle: '',
+  dates: '',
+  days: 0,
+  image: '',
+};
+
+const emptyScheduleData: DaySchedule[] = [];
+
+const emptyBudgetData: BudgetData = {
+  total: 0,
+  currency: { rate: 0, unit: '' },
+  breakdown: [],
+  dailyBudget: [],
+};
 import { StreamPayload } from '@/types/api';
 import { fetchUnsplashImage } from '@/lib/utils/unsplash';
 import {
@@ -13,7 +34,16 @@ import {
   mapStreamStatusToStoreStatus,
   generateId,
 } from '@/lib/utils/typeHelpers';
-import { saveTrip, getTrips, getTrip, deleteTrip, SavedTrip, shareTrip, getSharedTrip, SharedTrip } from '@/lib/firebase';
+import {
+  saveTrip,
+  getTrips,
+  getTrip,
+  deleteTrip,
+  SavedTrip,
+  shareTrip,
+  getSharedTrip,
+  SharedTrip,
+} from '@/lib/firebase';
 
 // Store State 확장 인터페이스
 interface ExtendedTripStoreState extends TripStoreState {
@@ -52,9 +82,9 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   planningProgress: 0,
   currentAgentStatus: initialAgentStatus,
 
-  tripData: initialTripData,
-  scheduleData: initialScheduleData,
-  budgetData: initialBudgetData,
+  tripData: emptyTripData,
+  scheduleData: emptyScheduleData,
+  budgetData: emptyBudgetData,
 
   selectedDay: 1,
   selectedActivityId: null,
@@ -455,8 +485,8 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         set({
           userInput: trip.userInput,
           tripData: trip.tripData,
-          scheduleData: trip.scheduleData as typeof initialScheduleData,
-          budgetData: trip.budgetData as typeof initialBudgetData,
+          scheduleData: trip.scheduleData as DaySchedule[],
+          budgetData: trip.budgetData as BudgetData,
           currentTripId: tripId,
           selectedDay: 1,
         });
@@ -482,9 +512,9 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   // 여행 상태 초기화
   resetTrip: () =>
     set({
-      tripData: initialTripData,
-      scheduleData: initialScheduleData,
-      budgetData: initialBudgetData,
+      tripData: emptyTripData,
+      scheduleData: emptyScheduleData,
+      budgetData: emptyBudgetData,
       currentTripId: null,
       currentShareId: null,
       selectedDay: 1,
@@ -563,8 +593,8 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         set({
           userInput: sharedTrip.userInput,
           tripData: sharedTrip.tripData,
-          scheduleData: sharedTrip.scheduleData as typeof initialScheduleData,
-          budgetData: sharedTrip.budgetData as typeof initialBudgetData,
+          scheduleData: sharedTrip.scheduleData as DaySchedule[],
+          budgetData: sharedTrip.budgetData as BudgetData,
           currentShareId: shareId,
           selectedDay: 1,
         });

@@ -36,7 +36,8 @@ async function generateDayItinerary(
   totalDays: number,
   intent: Intent,
   flight: FlightContext,
-  hotel: HotelContext
+  hotel: HotelContext,
+  mustVisitPlaces?: string[]
 ): Promise<DayItinerary> {
   const isFirstDay = dayNumber === 1;
   const isLastDay = dayNumber === totalDays;
@@ -153,8 +154,12 @@ Transport Data:
 - Flight Duration: ${flight.flightDuration}
 - Return Departure: ${flight.returnTime}
 
+Must-Visit Places (USER PRIORITY):
+${mustVisitPlaces && mustVisitPlaces.length > 0 ? mustVisitPlaces.map((p) => `- ${p}`).join('\n') : '- None specified'}
+
 Instruction:
 Create a well-structured Day ${dayNumber} itinerary. Cluster activities by location. Make it relaxed but fulfilling.
+${mustVisitPlaces && mustVisitPlaces.length > 0 ? '**IMPORTANT**: Try to include the must-visit places in the itinerary. Distribute them across days naturally based on geographic clustering.' : ''}
         `,
       },
     ],
@@ -178,7 +183,8 @@ export async function generateItinerary(
   intent: Intent,
   flight: FlightContext,
   hotel: HotelContext,
-  suggestion?: AgentSuggestion
+  suggestion?: AgentSuggestion,
+  mustVisitPlaces?: string[]
 ): Promise<DayItinerary[]> {
   console.log(`🗺️ [4-Route] ${intent.destination} ${intent.duration}일 일정 병렬 생성 시작...`);
 
@@ -186,11 +192,15 @@ export async function generateItinerary(
     console.log(`📝 [4-Route] 수정 요청: ${suggestion.reason}`);
   }
 
+  if (mustVisitPlaces && mustVisitPlaces.length > 0) {
+    console.log(`📍 [4-Route] 꼭 가고 싶은 장소: ${mustVisitPlaces.join(', ')}`);
+  }
+
   try {
     const dayPromises: Promise<DayItinerary>[] = [];
 
     for (let day = 1; day <= intent.duration; day++) {
-      dayPromises.push(generateDayItinerary(day, intent.duration, intent, flight, hotel));
+      dayPromises.push(generateDayItinerary(day, intent.duration, intent, flight, hotel, mustVisitPlaces));
     }
 
     const startTime = Date.now();

@@ -94,8 +94,14 @@ export async function POST(req: Request) {
         });
 
         // Route 에이전트는 기존 Context들을 활용하여 동선을 짭니다.
-        // (필요하다면 여기서도 userRequest를 넘겨서 '원하는 액티비티' 등을 반영할 수 있습니다)
-        let itinerary = await generateItinerary(intent, flightContext, hotelContext);
+        // mustVisitPlaces가 있으면 함께 전달하여 일정에 반영
+        let itinerary = await generateItinerary(
+          intent,
+          flightContext,
+          hotelContext,
+          undefined, // suggestion
+          userRequest.mustVisitPlaces
+        );
 
         sendEvent({
           type: 'progress',
@@ -128,7 +134,8 @@ export async function POST(req: Request) {
               intent,
               flightContext,
               hotelContext,
-              budgetCheck.suggestion
+              budgetCheck.suggestion,
+              userRequest.mustVisitPlaces
             );
           }
           // (Hotel 변경 제안은 사용자가 직접 입력한 경우 무시해야 하므로 여기선 Route만 재조정)

@@ -41,3 +41,10 @@ body {
 .highlight-underline:hover {
   background-size: 100% 88%;
 }
+
+/* 모바일 화면 UI 크기 조정 */
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}

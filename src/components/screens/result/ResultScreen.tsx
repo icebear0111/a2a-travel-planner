@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, Share2, Save, Check, Calendar, Map, CreditCard, Loader2 } from 'lucide-react';
+import { Share2, Save, Check, Calendar, Map, CreditCard, Loader2 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import { useAuthStore } from '@/stores/authStore';
+import Header from '@/components/ui/Header';
 import ScheduleTab from './ScheduleTab';
 import MapTab from './MapTab';
 import BudgetTab from './BudgetTab';
@@ -40,33 +41,21 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
 
   return (
     <div className="min-h-screen bg-white pb-20">
-      {/* 히어로 헤더 */}
-      <div className="relative h-64 md:h-80 w-full">
-        <Image
-          src={tripData.image}
-          alt={tripData.title}
-          fill
-          className="object-cover"
-          priority
-          unoptimized={true}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-        {/* 상단 버튼들 */}
-        <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10">
-          <button
-            onClick={() => setCurrentScreen('home')}
-            className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
+      {/* 헤더 */}
+      <Header
+        showBack
+        onBack={() => setCurrentScreen('home')}
+        onNavigate={setCurrentScreen}
+        rightContent={
           <div className="flex gap-2">
             {/* 저장 버튼 */}
             <button
               onClick={handleSave}
               disabled={isSaving || isSaved}
-              className={`w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-all ${
-                isSaved ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white hover:bg-white/30'
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                isSaved
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
               title={isSaved ? '저장됨' : '내 여행에 저장'}
             >
@@ -81,12 +70,25 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
             {/* 공유 버튼 */}
             <button
               onClick={() => setCurrentScreen('share')}
-              className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+              className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-colors"
             >
               <Share2 className="w-5 h-5" />
             </button>
           </div>
-        </div>
+        }
+      />
+
+      {/* 히어로 이미지 */}
+      <div className="relative h-56 md:h-72 w-full">
+        <Image
+          src={tripData.image}
+          alt={tripData.title}
+          fill
+          className="object-cover"
+          priority
+          unoptimized={true}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
         {/* 여행 정보 */}
         <div className="absolute bottom-0 left-0 right-0 p-6 text-white">

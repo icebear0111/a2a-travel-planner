@@ -110,7 +110,12 @@ export default function Home() {
         return <EditScreen onBack={() => window.history.back()} />;
 
       case 'share':
-        return <ShareScreen onBack={() => window.history.back()} />;
+        return (
+          <ShareScreen
+            onBack={() => window.history.back()}
+            onNavigate={(screen) => navigateTo(screen)}
+          />
+        );
 
       case 'login':
         return (

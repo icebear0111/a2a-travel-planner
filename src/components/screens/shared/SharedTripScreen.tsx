@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Calendar, Map, CreditCard, Loader2, AlertCircle, Home } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
+import Header from '@/components/ui/Header';
 import ScheduleTab from '../result/ScheduleTab';
 import MapTab from '../result/MapTab';
 import BudgetTab from '../result/BudgetTab';
@@ -74,8 +75,24 @@ export default function SharedTripScreen({ shareId, onNavigate }: SharedTripScre
 
   return (
     <div className="min-h-screen bg-white pb-20">
-      {/* Hero Header */}
-      <div className="relative h-64 md:h-80 w-full">
+      {/* 헤더 */}
+      <Header
+        showBack
+        onBack={() => onNavigate('home')}
+        subtitle={`${sharedBy}님의 여행`}
+        onNavigate={onNavigate}
+        rightContent={
+          <button
+            onClick={() => onNavigate('home')}
+            className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-slate-800 transition-colors"
+          >
+            나도 계획하기
+          </button>
+        }
+      />
+
+      {/* 히어로 이미지 */}
+      <div className="relative h-56 md:h-72 w-full">
         <Image
           src={tripData.image}
           alt={tripData.title}
@@ -85,19 +102,6 @@ export default function SharedTripScreen({ shareId, onNavigate }: SharedTripScre
           unoptimized={true}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-        {/* 공유자 정보 배지 */}
-        <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-          <div className="px-3 py-1.5 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-medium">
-            {sharedBy}님이 공유한 여행
-          </div>
-          <button
-            onClick={() => onNavigate('home')}
-            className="px-4 py-2 bg-white/20 backdrop-blur-md rounded-full text-white text-sm font-medium hover:bg-white/30 transition-colors"
-          >
-            나도 계획하기
-          </button>
-        </div>
 
         {/* Trip Info */}
         <div className="absolute bottom-0 left-0 right-0 p-6 text-white">

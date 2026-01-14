@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import {
-  X,
   Download,
   Copy,
   Check,
@@ -16,12 +15,14 @@ import {
 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import { useAuthStore } from '@/stores/authStore';
+import Header from '@/components/ui/Header';
 
 interface ShareScreenProps {
   onBack: () => void;
+  onNavigate: (screen: string) => void;
 }
 
-export default function ShareScreen({ onBack }: ShareScreenProps) {
+export default function ShareScreen({ onBack, onNavigate }: ShareScreenProps) {
   const { tripData, userInput, budgetData, shareTripAndGetUrl, isSharing, currentShareId } =
     useTripStore();
   const { user } = useAuthStore();
@@ -76,19 +77,8 @@ export default function ShareScreen({ onBack }: ShareScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-body text-slate-900 pb-20">
-      {/* 헤더 */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="font-bold text-lg">여행 공유</h1>
-          <button
-            onClick={onBack}
-            className="p-2 -mr-2 text-slate-500 hover:text-black hover:bg-slate-100 rounded-full transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-white font-body text-slate-900 pb-20">
+      <Header showBack onBack={onBack} subtitle="여행 공유" onNavigate={onNavigate} />
 
       <div className="max-w-md mx-auto p-6 space-y-6">
         {/* 미리보기 카드 */}

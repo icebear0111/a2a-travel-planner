@@ -47,37 +47,37 @@ async function generateDayItinerary(
 
   if (isFirstDay) {
     daySpecificInstructions = `
-[CRITICAL - DAY 1 LOGISTICS (FLIGHT START)]
-- **Activity #1 MUST be the FLIGHT DEPARTURE from Origin.**
-  - Time: ${flight.departureTime} (User Input)
-  - Duration: ${flight.flightDuration}
-  - Type: 'flight'
-  - Title: "출국: ${intent.destination}행 비행기 탑승"
-  - Desc: "출발: ${flight.originAirportCode}, 소요시간: ${flight.flightDuration}"
-
-- **Activity #2 MUST be ARRIVAL & IMMIGRATION.**
-  - Time: Calculate based on (Start Time + Duration).
-  - Duration: 1h ~ 1.5h (Immigration & Baggage Claim).
-  - Title: "${intent.destination} 공항(${flight.destAirportCode}) 도착 및 입국 수속"
-
-- **Activity #3 MUST be MOVE TO HOTEL.**
-  - Destination: ${hotel.name}
-  - Type: 'transport'
-
-- **Activity #4 MUST be CHECK-IN.**
-  - Type: 'hotel'
+            [CRITICAL - DAY 1 LOGISTICS (FLIGHT START)]
+            - **Activity #1 MUST be the FLIGHT DEPARTURE from Origin.**
+              - Time: ${flight.departureTime} (User Input)
+              - Duration: ${flight.flightDuration}
+              - Type: 'flight'
+              - Title: "출국: ${intent.destination}행 비행기 탑승"
+              - Desc: "출발: ${flight.originAirportCode}, 소요시간: ${flight.flightDuration}"
+            
+            - **Activity #2 MUST be ARRIVAL & IMMIGRATION.**
+              - Time: Calculate based on (Start Time + Duration).
+              - Duration: 1h ~ 1.5h (Immigration & Baggage Claim).
+              - Title: "${intent.destination} 공항(${flight.destAirportCode}) 도착 및 입국 수속"
+            
+            - **Activity #3 MUST be MOVE TO HOTEL.**
+              - Destination: ${hotel.name}
+              - Type: 'transport'
+            
+            - **Activity #4 MUST be CHECK-IN.**
+              - Type: 'hotel'
   - Title: "${hotel.name} 체크인"
 
 - After check-in, schedule light activities near the hotel (considering arrival fatigue).`;
   } else if (isLastDay) {
     daySpecificInstructions = `
-[CRITICAL - LAST DAY LOGISTICS]
+            [CRITICAL - LAST DAY LOGISTICS]
 - Morning: Hotel checkout or luggage storage.
 - Schedule light activities near the airport or central area.
 - **Schedule "Travel to Airport" 2.5 hours before the flight time.**
-- **Final Activity MUST be FLIGHT DEPARTURE from Destination.**
-  - Time: ${flight.returnTime}
-  - Type: 'flight'
+            - **Final Activity MUST be FLIGHT DEPARTURE from Destination.**
+              - Time: ${flight.returnTime}
+              - Type: 'flight'
   - Title: "귀국: 공항 출발 (${flight.destAirportCode})"`;
   } else {
     daySpecificInstructions = `
@@ -109,58 +109,66 @@ Create a highly realistic, minute-by-minute itinerary for **Day ${dayNumber} of 
 7. For each desc only use keywords.
 8. **id format**: "d${dayNumber}-[sequence]" (e.g., "d${dayNumber}-1", "d${dayNumber}-2", ...)
 
-[CRITICAL - GEOGRAPHIC CLUSTERING]
-- **ONE DAY = ONE AREA**: Minimize travel time. Do NOT zig-zag across the city.
-- **Basecamp Strategy**: User is staying at **"${hotel.name}"**. 
-  - Morning: Start from Hotel.
-  - Evening: Loop back towards the Hotel area.
-
+            [CRITICAL - GEOGRAPHIC CLUSTERING]
+            - **ONE DAY = ONE AREA**: Minimize travel time. Do NOT zig-zag across the city.
+            - **Basecamp Strategy**: User is staying at **"${hotel.name}"**. 
+              - Morning: Start from Hotel.
+              - Evening: Loop back towards the Hotel area.
+            
 ${daySpecificInstructions}
 
-REQUIRED JSON STRUCTURE:
-{
-  "activities": [
-    {
+            REQUIRED JSON STRUCTURE:
+            {
+                  "activities": [
+                    {
       "id": "d${dayNumber}-1",
-      "time": "HH:MM",
-      "duration": "2h",
+                      "time": "HH:MM",
+                      "duration": "2h",
       "type": "sightseeing",
-      "title": "...",
-      "location": "...",
-      "desc": "...",
-      "price": 0
-    }
-  ]
-}
-        `,
+                      "title": "...",
+                      "location": "...",
+                      "desc": "...",
+                      "price": 0
+                }
+              ]
+            }
+          `,
       },
       {
         role: 'user',
         content: `
-User Request Overview:
-- Destination: ${intent.destination}
+            User Request Overview:
+            - Destination: ${intent.destination}
 - Day: ${dayNumber} of ${totalDays}
-- Themes: ${intent.themes.join(', ')}
-- Companion: ${intent.companion}
+            - Themes: ${intent.themes.join(', ')}
+            - Companion: ${intent.companion}
 
-Basecamp (Hotel):
-- Name: ${hotel.name}
-- Location Hint: ${hotel.address}
+            Basecamp (Hotel):
+            - Name: ${hotel.name}
+            - Location Hint: ${hotel.address}
 
-Transport Data:
+            Transport Data:
 - Origin Airport: ${flight.originAirportCode}
 - Destination Airport: ${flight.destAirportCode}
 - Origin Departure: ${flight.departureTime}
-- Flight Duration: ${flight.flightDuration}
+            - Flight Duration: ${flight.flightDuration}
 - Return Departure: ${flight.returnTime}
 
 Must-Visit Places (USER PRIORITY):
-${mustVisitPlaces && mustVisitPlaces.length > 0 ? mustVisitPlaces.map((p) => `- ${p}`).join('\n') : '- None specified'}
+${
+  mustVisitPlaces && mustVisitPlaces.length > 0
+    ? mustVisitPlaces.map((p) => `- ${p}`).join('\n')
+    : '- None specified'
+}
 
-Instruction:
+            Instruction:
 Create a well-structured Day ${dayNumber} itinerary. Cluster activities by location. Make it relaxed but fulfilling.
-${mustVisitPlaces && mustVisitPlaces.length > 0 ? '**IMPORTANT**: Try to include the must-visit places in the itinerary. Distribute them across days naturally based on geographic clustering.' : ''}
-        `,
+${
+  mustVisitPlaces && mustVisitPlaces.length > 0
+    ? '**IMPORTANT**: Try to include the must-visit places in the itinerary. Distribute them across days naturally based on geographic clustering.'
+    : ''
+}
+          `,
       },
     ],
   });
@@ -200,7 +208,9 @@ export async function generateItinerary(
     const dayPromises: Promise<DayItinerary>[] = [];
 
     for (let day = 1; day <= intent.duration; day++) {
-      dayPromises.push(generateDayItinerary(day, intent.duration, intent, flight, hotel, mustVisitPlaces));
+      dayPromises.push(
+        generateDayItinerary(day, intent.duration, intent, flight, hotel, mustVisitPlaces)
+      );
     }
 
     const startTime = Date.now();

@@ -1,8 +1,8 @@
 // components/ui/Header.tsx
 'use client';
 
-import React from 'react';
-import { Menu, Compass, ChevronLeft, LogOut } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Menu, Compass, ChevronLeft, LogOut, X, Map, LogIn } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 
 type HeaderVariant = 'default' | 'login' | 'signup' | 'minimal' | 'transparent';
@@ -27,6 +27,8 @@ export default function Header({
   rightContent,
 }: HeaderProps) {
   const { user, signOut } = useAuthStore();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // 로고 클릭 시 홈으로 이동
   const handleLogoClick = () => {
@@ -35,7 +37,29 @@ export default function Header({
 
   const handleLogout = async () => {
     await signOut();
+    setMenuOpen(false);
   };
+
+  const handleMenuNavigate = (screen: string) => {
+    onNavigate?.(screen);
+    setMenuOpen(false);
+  };
+
+  // 메뉴 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpen]);
 
   const isTransparent = variant === 'transparent';
 
@@ -101,9 +125,61 @@ export default function Header({
           : !showBack &&
             variant === 'default' &&
             (isMobile ? (
-              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <Menu className="w-6 h-6" />
-              </button>
+              // 모바일 메뉴
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  {menuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                </button>
+
+                {/* 드롭다운 메뉴 */}
+                {menuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {user ? (
+                      <>
+                        {/* 사용자 정보 */}
+                        <div className="px-4 py-3 border-b border-slate-100">
+                          <p className="text-sm text-slate-500">로그인됨</p>
+                          <p className="font-medium truncate">
+                            {user.displayName || user.email?.split('@')[0]}님
+                          </p>
+                        </div>
+
+                        {/* 메뉴 아이템 */}
+                        <button
+                          onClick={() => handleMenuNavigate('mytrips')}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors"
+                        >
+                          <Map className="w-5 h-5 text-slate-400" />
+                          <span>내 여행</span>
+                        </button>
+
+                        <div className="border-t border-slate-100 mt-1 pt-1">
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-red-500"
+                          >
+                            <LogOut className="w-5 h-5" />
+                            <span>로그아웃</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleMenuNavigate('login')}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors"
+                        >
+                          <LogIn className="w-5 h-5 text-slate-400" />
+                          <span>로그인</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : (
               <nav className="flex gap-6 text-sm font-medium text-slate-500 items-center">
                 {user && (

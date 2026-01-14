@@ -28,8 +28,10 @@ export interface HotelInput {
 // 사용자 입력 전체 구조
 export interface UserInput {
   destination: string;
+  duration?: number; // 여행 기간 (일수)
   flight: FlightInput;
   hotels: HotelInput[];
+  mustVisitPlaces?: string[]; // 꼭 가고 싶은 장소
 }
 
 // ============================================

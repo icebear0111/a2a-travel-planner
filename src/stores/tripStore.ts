@@ -69,6 +69,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
 
   userInput: {
     destination: '',
+    mustVisitPlaces: [],
     flight: {
       originAirportCode: '',
       destAirportCode: '',
@@ -490,6 +491,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       selectedActivityId: null,
       userInput: {
         destination: '',
+        mustVisitPlaces: [],
         flight: {
           originAirportCode: '',
           destAirportCode: '',

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import Header from '@/components/ui/Header';
+import Footer from '@/components/ui/Footer';
 import { useAuthStore } from '@/stores/authStore';
 
 interface LoginScreenProps {
@@ -54,7 +55,7 @@ export default function LoginScreen({ onBack, onNavigate }: LoginScreenProps) {
         {/* 타이틀 */}
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold mb-2">다시 만나서 반가워요</h1>
-          <p className="text-slate-500">로그인하고 여행 계획을 이어가세요</p>
+          <p className="text-slate-500">로그인하고 AI로 여행을 계획하세요</p>
         </div>
 
         {/* 소셜 로그인 */}
@@ -167,14 +168,7 @@ export default function LoginScreen({ onBack, onNavigate }: LoginScreenProps) {
         </p>
 
         {/* 푸터 */}
-        <div className="text-center mt-12 text-xs text-slate-400">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <button className="hover:text-slate-600 transition-colors">이용약관</button>
-            <span>|</span>
-            <button className="hover:text-slate-600 transition-colors">개인정보처리방침</button>
-          </div>
-          <p>© 2025 Triply. All rights reserved.</p>
-        </div>
+        <Footer className="mt-12 border-t-0" />
       </div>
     </div>
   );

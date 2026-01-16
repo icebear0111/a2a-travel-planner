@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, User } from 'lucide-react';
 import Header from '@/components/ui/Header';
+import Footer from '@/components/ui/Footer';
 import { useAuthStore } from '@/stores/authStore';
 
 interface SignupScreenProps {
@@ -66,7 +67,7 @@ export default function SignupScreen({ onBack, onNavigate }: SignupScreenProps) 
         {/* 타이틀 */}
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold mb-2">여행을 시작해볼까요?</h1>
-          <p className="text-slate-500">계정을 만들고 AI 여행 플래너를 경험하세요</p>
+          <p className="text-slate-500">계정을 만들고 TrAI를 경험하세요</p>
         </div>
 
         {/* 이메일 회원가입 폼 */}
@@ -187,6 +188,9 @@ export default function SignupScreen({ onBack, onNavigate }: SignupScreenProps) 
             로그인
           </button>
         </p>
+
+        {/* 푸터 */}
+        <Footer className="mt-12 border-t-0" />
       </div>
     </div>
   );

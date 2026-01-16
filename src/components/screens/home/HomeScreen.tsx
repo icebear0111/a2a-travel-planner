@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import Header from '@/components/ui/Header';
+import Footer from '@/components/ui/Footer';
 import { ArrowRight, MapPin, Search } from 'lucide-react';
 import { homeSuggestions, homeRecentTrips } from '@/constants/initialData';
 import { useTripStore } from '@/stores/tripStore';
@@ -165,14 +166,7 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
         </section>
 
         {/* 5. Footer */}
-        <footer className="py-10 border-t border-slate-100 text-center text-xs text-slate-400">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <button className="hover:text-slate-600 transition-colors">이용약관</button>
-            <span>|</span>
-            <button className="hover:text-slate-600 transition-colors">개인정보처리방침</button>
-          </div>
-          <p>© 2025 Triply. All rights reserved.</p>
-        </footer>
+        <Footer />
       </main>
     </div>
   );

@@ -18,8 +18,8 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: 'A2A Travel Planner',
-  description: 'AI-Powered Travel Planning',
+  title: 'TrAI - AI 여행 플래너',
+  description: 'AI가 만들어주는 맞춤 여행 계획',
 };
 
 export default function RootLayout({

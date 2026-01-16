@@ -113,7 +113,7 @@ export default function Header({
               <span
                 className={`text-lg font-bold tracking-tight ${isTransparent ? 'text-white' : ''}`}
               >
-                A2A.
+                TrAI
               </span>
             </button>
           )}

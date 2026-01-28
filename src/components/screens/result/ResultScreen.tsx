@@ -23,7 +23,6 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
 
   const handleSave = async () => {
     if (!user) {
-      alert('로그인이 필요합니다.');
       setCurrentScreen('login');
       return;
     }

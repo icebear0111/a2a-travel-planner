@@ -9,13 +9,14 @@ import Header from '@/components/ui/Header';
 import ScheduleTab from './ScheduleTab';
 import MapTab from './MapTab';
 import BudgetTab from './BudgetTab';
+import { getTravelStyleLabel } from '@/lib/utils/travelStyle';
 
 interface ResultScreenProps {
   setCurrentScreen: (screen: string) => void;
 }
 
 export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
-  const { tripData, saveCurrentTrip, isSaving, currentTripId } = useTripStore();
+  const { tripData, userInput, saveCurrentTrip, isSaving, currentTripId } = useTripStore();
   const { user } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<'schedule' | 'map' | 'budget'>('schedule');
@@ -95,9 +96,16 @@ export default function ResultScreen({ setCurrentScreen }: ResultScreenProps) {
             {tripData.days} Days Trip
           </span>
           <h1 className="text-3xl md:text-4xl font-display font-bold mb-1">{tripData.title}</h1>
-          <p className="text-white/80 flex items-center gap-2 text-sm">
-            <Calendar className="w-4 h-4" /> {tripData.dates}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
+            <span className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" /> {tripData.dates}
+            </span>
+            {userInput.travelStyle && (
+              <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-bold backdrop-blur-md">
+                {getTravelStyleLabel(userInput.travelStyle)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

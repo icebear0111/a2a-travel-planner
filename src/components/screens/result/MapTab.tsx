@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   MapPin,
   Navigation,
@@ -18,9 +18,18 @@ import {
   ChevronUp,
   ExternalLink,
   Loader2,
+  Route,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import { Activity } from '@/types/trip';
+import {
+  TravelSegmentQuality,
+  calculateRouteQuality,
+  formatDistance,
+  formatTravelMinutes,
+} from '@/lib/utils/routeQuality';
 
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || '';
 
@@ -66,6 +75,12 @@ const ACTIVITY_STYLES: Record<
     bg: 'bg-amber-50 border-amber-200',
     label: '카페',
   },
+  coffee: {
+    icon: Coffee,
+    color: 'text-amber-700',
+    bg: 'bg-amber-50 border-amber-200',
+    label: '카페',
+  },
   nightlife: {
     icon: Moon,
     color: 'text-indigo-600',
@@ -79,6 +94,41 @@ function getActivityStyle(type: string) {
   return ACTIVITY_STYLES[type] || ACTIVITY_STYLES.etc;
 }
 
+const ROUTE_LEVEL_STYLES = {
+  excellent: {
+    label: '짧음',
+    card: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    dot: 'bg-emerald-500',
+    bar: 'bg-emerald-500',
+  },
+  good: {
+    label: '보통',
+    card: 'border-blue-200 bg-blue-50 text-blue-700',
+    dot: 'bg-blue-500',
+    bar: 'bg-blue-500',
+  },
+  busy: {
+    label: '김',
+    card: 'border-amber-200 bg-amber-50 text-amber-700',
+    dot: 'bg-amber-500',
+    bar: 'bg-amber-500',
+  },
+  unknown: {
+    label: '대기',
+    card: 'border-slate-200 bg-slate-50 text-slate-500',
+    dot: 'bg-slate-300',
+    bar: 'bg-slate-300',
+  },
+};
+
+const ROUTE_SOURCE_LABELS: Record<TravelSegmentQuality['source'], string> = {
+  directions: '검증',
+  coordinates: '좌표 추정',
+  schedule: '시간표 추정',
+  locality: '지역 추정',
+  unknown: '대기',
+};
+
 // 활동 카드 컴포넌트
 function ActivityCard({
   activity,
@@ -88,6 +138,7 @@ function ActivityCard({
   onSelect,
   onToggleExpand,
   isLast,
+  travelSegment,
 }: {
   activity: Activity;
   index: number;
@@ -96,9 +147,21 @@ function ActivityCard({
   onSelect: () => void;
   onToggleExpand: () => void;
   isLast: boolean;
+  travelSegment?: TravelSegmentQuality;
 }) {
   const style = getActivityStyle(activity.type);
   const Icon = style.icon;
+  const segmentStyle = travelSegment ? ROUTE_LEVEL_STYLES[travelSegment.level] : null;
+  const travelMinutes =
+    travelSegment?.minutes !== null && travelSegment?.minutes !== undefined
+      ? formatTravelMinutes(travelSegment.minutes)
+      : travelSegment?.timeText;
+  const travelDistance =
+    travelSegment?.distanceText || formatDistance(travelSegment?.distanceMeters ?? null);
+  const segmentMeta =
+    travelSegment && travelSegment.minutes !== null
+      ? `${ROUTE_SOURCE_LABELS[travelSegment.source]} · ${segmentStyle?.label || '대기'}`
+      : '대기';
 
   return (
     <div className="relative">
@@ -179,24 +242,71 @@ function ActivityCard({
           </button>
         </div>
       </div>
+
+      {!isLast && travelSegment && (
+        <div className="ml-[52px] mt-2 mb-1">
+          <div
+            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+              segmentStyle?.card || ROUTE_LEVEL_STYLES.unknown.card
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                segmentStyle?.dot || ROUTE_LEVEL_STYLES.unknown.dot
+              }`}
+            />
+            <span>
+              다음 이동 {travelMinutes || '검증 대기'}
+              {travelDistance ? ` · ${travelDistance}` : ''}
+            </span>
+            <span className="font-bold">{segmentMeta}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function MapTab() {
   const { scheduleData, selectedDay, setSelectedDay, userInput } = useTripStore();
-  const [focusedActivityId, setFocusedActivityId] = useState<string | null>(null);
-  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
-  const [isMapLoading, setIsMapLoading] = useState(true);
+  const selectedDayRef = useRef(selectedDay);
+
+  useEffect(() => {
+    selectedDayRef.current = selectedDay;
+  }, [selectedDay]);
+
+  const [mapState, setMapState] = useState<{
+    selectedDay: number;
+    focusedActivityId: string | null;
+    expandedActivityId: string | null;
+    isMapLoading: boolean;
+  }>({
+    selectedDay,
+    focusedActivityId: null,
+    expandedActivityId: null,
+    isMapLoading: true,
+  });
+
+  const isMapStateStale = mapState.selectedDay !== selectedDay;
+  const focusedActivityId = isMapStateStale ? null : mapState.focusedActivityId;
+  const expandedActivityId = isMapStateStale ? null : mapState.expandedActivityId;
+  const isMapLoading = isMapStateStale ? true : mapState.isMapLoading;
 
   const currentSchedule = scheduleData.find((d) => d.day === selectedDay);
-
-  // 날짜 변경 시 초기화
-  useEffect(() => {
-    setFocusedActivityId(null);
-    setExpandedActivityId(null);
-    setIsMapLoading(true);
-  }, [selectedDay]);
+  const routeQuality = useMemo(() => calculateRouteQuality(currentSchedule), [currentSchedule]);
+  const routeSegmentByActivityId = useMemo(
+    () => new Map(routeQuality.segments.map((segment) => [segment.fromId, segment])),
+    [routeQuality.segments]
+  );
+  const qualityStyle = ROUTE_LEVEL_STYLES[routeQuality.level];
+  const routeDataLabel =
+    routeQuality.totalSegments === 0
+      ? '없음'
+      : routeQuality.verifiedSegments > 0
+        ? `${routeQuality.verifiedSegments}/${routeQuality.totalSegments} 검증`
+        : routeQuality.estimatedSegments > 0
+          ? `${routeQuality.estimatedSegments}/${routeQuality.totalSegments} 추정`
+          : `${routeQuality.knownSegments}/${routeQuality.totalSegments}`;
 
   // 구글 맵 URL 생성
   const mapUrls = useMemo(() => {
@@ -204,13 +314,14 @@ export default function MapTab() {
       return { embed: '', external: '' };
     }
 
-    const formatPlace = (input: { title: string; location?: string } | string) => {
+    const formatPlace = (input: { title: string; location?: string; address?: string } | string) => {
       let placeName = '';
       let contextLocation = userInput.destination;
 
       if (typeof input === 'string') {
         placeName = input;
       } else {
+        if (input.address) return input.address;
         placeName = input.title;
         if (input.location) contextLocation = input.location;
       }
@@ -254,16 +365,31 @@ export default function MapTab() {
   }, [currentSchedule, userInput.destination, focusedActivityId]);
 
   const handleActivitySelect = (activityId: string) => {
-    if (focusedActivityId === activityId) {
-      setFocusedActivityId(null);
-    } else {
-      setFocusedActivityId(activityId);
-      setIsMapLoading(true);
-    }
+    setMapState((state) => {
+      const currentFocusedId = state.selectedDay === selectedDay ? state.focusedActivityId : null;
+      const currentExpandedId = state.selectedDay === selectedDay ? state.expandedActivityId : null;
+
+      return {
+        selectedDay,
+        focusedActivityId: currentFocusedId === activityId ? null : activityId,
+        expandedActivityId: currentExpandedId,
+        isMapLoading: true,
+      };
+    });
   };
 
   const handleToggleExpand = (activityId: string) => {
-    setExpandedActivityId(expandedActivityId === activityId ? null : activityId);
+    setMapState((state) => {
+      const currentFocusedId = state.selectedDay === selectedDay ? state.focusedActivityId : null;
+      const currentExpandedId = state.selectedDay === selectedDay ? state.expandedActivityId : null;
+
+      return {
+        selectedDay,
+        focusedActivityId: currentFocusedId,
+        expandedActivityId: currentExpandedId === activityId ? null : activityId,
+        isMapLoading: state.selectedDay === selectedDay ? state.isMapLoading : true,
+      };
+    });
   };
 
   return (
@@ -287,6 +413,70 @@ export default function MapTab() {
       </div>
 
       {/* 메인 레이아웃: 지도 + 타임라인 */}
+      <div className={`mb-4 rounded-2xl border p-4 ${qualityStyle.card}`}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+              {routeQuality.level === 'busy' ? (
+                <AlertTriangle className="h-5 w-5" />
+              ) : routeQuality.level === 'unknown' ? (
+                <Route className="h-5 w-5" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5" />
+              )}
+            </div>
+            <div>
+              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                지도 기반 동선 품질
+              </p>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900">{routeQuality.label}</h3>
+                <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-bold">
+                  {routeQuality.score === null ? 'N/A' : `${routeQuality.score}점`}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-slate-600">{routeQuality.description}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[260px]">
+            <div className="rounded-lg bg-white/75 px-3 py-2">
+              <p className="text-slate-400">총 이동</p>
+              <p className="font-bold text-slate-900">
+                {routeQuality.knownSegments > 0
+                  ? formatTravelMinutes(routeQuality.totalTravelMinutes)
+                  : '대기'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-white/75 px-3 py-2">
+              <p className="text-slate-400">최장 구간</p>
+              <p className="font-bold text-slate-900">
+                {routeQuality.knownSegments > 0
+                  ? formatTravelMinutes(routeQuality.longestSegmentMinutes)
+                  : '대기'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-white/75 px-3 py-2">
+              <p className="text-slate-400">이동 데이터</p>
+              <p className="font-bold text-slate-900">{routeDataLabel}</p>
+            </div>
+            <div className="rounded-lg bg-white/75 px-3 py-2">
+              <p className="text-slate-400">장소 검증</p>
+              <p className="font-bold text-slate-900">
+                {routeQuality.validatedPlaces}/{routeQuality.validateTargets}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/80">
+          <div
+            className={`h-full rounded-full transition-all ${qualityStyle.bar}`}
+            style={{ width: `${routeQuality.score ?? 0}%` }}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 왼쪽: 타임라인 */}
         <div className="order-2 lg:order-1">
@@ -301,7 +491,14 @@ export default function MapTab() {
               </h3>
               {focusedActivityId && (
                 <button
-                  onClick={() => setFocusedActivityId(null)}
+                  onClick={() =>
+                    setMapState({
+                      selectedDay,
+                      focusedActivityId: null,
+                      expandedActivityId,
+                      isMapLoading: true,
+                    })
+                  }
                   className="text-xs flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1.5 rounded-full transition-colors"
                 >
                   <RefreshCcw className="w-3 h-3" />
@@ -322,6 +519,7 @@ export default function MapTab() {
                   onSelect={() => handleActivitySelect(activity.id)}
                   onToggleExpand={() => handleToggleExpand(activity.id)}
                   isLast={index === currentSchedule.activities.length - 1}
+                  travelSegment={routeSegmentByActivityId.get(activity.id)}
                 />
               ))}
 
@@ -358,12 +556,21 @@ export default function MapTab() {
                 style={{ border: 0 }}
                 loading="lazy"
                 allowFullScreen
-                referrerPolicy="no-referrer-when-downgrade"
-                src={mapUrls.embed}
-                title="Google Maps"
-                onLoad={() => setIsMapLoading(false)}
-                className="transition-opacity duration-300"
-              />
+	                referrerPolicy="no-referrer-when-downgrade"
+	                src={mapUrls.embed}
+	                title="Google Maps"
+	                onLoad={() => {
+	                  if (selectedDayRef.current !== selectedDay) return;
+	                  setMapState((state) => ({
+	                    selectedDay,
+	                    focusedActivityId: state.selectedDay === selectedDay ? state.focusedActivityId : null,
+	                    expandedActivityId:
+	                      state.selectedDay === selectedDay ? state.expandedActivityId : null,
+	                    isMapLoading: false,
+	                  }));
+	                }}
+	                className="transition-opacity duration-300"
+	              />
             ) : (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center p-6">

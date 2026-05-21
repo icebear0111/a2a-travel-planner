@@ -11,7 +11,7 @@ interface LoginScreenProps {
   onNavigate: (screen: string) => void;
 }
 
-export default function LoginScreen({ onBack, onNavigate }: LoginScreenProps) {
+export default function LoginScreen({ onNavigate }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

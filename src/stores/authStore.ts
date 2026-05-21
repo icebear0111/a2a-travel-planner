@@ -1,12 +1,5 @@
 import { create } from 'zustand';
-import {
-  signUpWithEmail,
-  signInWithEmail,
-  signInWithGoogle,
-  logOut,
-  onAuthChange,
-  User,
-} from '@/lib/firebase';
+import type { User } from 'firebase/auth';
 
 interface AuthState {
   user: User | null;
@@ -29,16 +22,31 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   // 앱 시작 시 인증 상태 초기화
   initialize: () => {
-    const unsubscribe = onAuthChange((user) => {
-      set({ user, isLoading: false });
+    let unsubscribe: (() => void) | undefined;
+    let isActive = true;
+
+    import('@/lib/firebase').then(({ onAuthChange }) => {
+      if (!isActive) return;
+
+      unsubscribe = onAuthChange((user) => {
+        set({ user, isLoading: false });
+      });
+    }).catch((error) => {
+      console.error('인증 초기화 실패:', error);
+      set({ isLoading: false });
     });
-    return unsubscribe;
+
+    return () => {
+      isActive = false;
+      unsubscribe?.();
+    };
   },
 
   // 이메일/비밀번호 회원가입
   signUp: async (email, password, name) => {
     set({ isLoading: true, error: null });
     try {
+      const { signUpWithEmail } = await import('@/lib/firebase');
       await signUpWithEmail(email, password, name);
       set({ isLoading: false });
       return true;
@@ -53,6 +61,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   signIn: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
+      const { signInWithEmail } = await import('@/lib/firebase');
       await signInWithEmail(email, password);
       set({ isLoading: false });
       return true;
@@ -67,6 +76,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   signInGoogle: async () => {
     set({ isLoading: true, error: null });
     try {
+      const { signInWithGoogle } = await import('@/lib/firebase');
       await signInWithGoogle();
       set({ isLoading: false });
       return true;
@@ -80,6 +90,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   // 로그아웃
   signOut: async () => {
     try {
+      const { logOut } = await import('@/lib/firebase');
       await logOut();
     } catch (error) {
       console.error('로그아웃 실패:', error);

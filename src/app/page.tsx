@@ -1,20 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useTripStore } from '@/stores/tripStore';
 
-// Components (새로운 경로)
 import HomeScreen from '@/components/screens/home/HomeScreen';
-import SetupScreen from '@/components/screens/setup/SetupScreen';
-import LoadingScreen from '@/components/screens/loading/LoadingScreen';
-import ResultScreen from '@/components/screens/result/ResultScreen';
-import DetailScreen from '@/components/screens/detail/DetailScreen';
-import EditScreen from '@/components/screens/edit/EditScreen';
-import ShareScreen from '@/components/screens/share/ShareScreen';
-import LoginScreen from '@/components/screens/auth/LoginScreen';
-import SignupScreen from '@/components/screens/auth/SignupScreen';
-import MyTripsScreen from '@/components/screens/trips/MyTripsScreen';
-import SharedTripScreen from '@/components/screens/shared/SharedTripScreen';
+
+const SetupScreen = dynamic(() => import('@/components/screens/setup/SetupScreen'));
+const LoadingScreen = dynamic(() => import('@/components/screens/loading/LoadingScreen'));
+const ResultScreen = dynamic(() => import('@/components/screens/result/ResultScreen'));
+const DetailScreen = dynamic(() => import('@/components/screens/detail/DetailScreen'));
+const EditScreen = dynamic(() => import('@/components/screens/edit/EditScreen'));
+const ShareScreen = dynamic(() => import('@/components/screens/share/ShareScreen'));
+const LoginScreen = dynamic(() => import('@/components/screens/auth/LoginScreen'));
+const SignupScreen = dynamic(() => import('@/components/screens/auth/SignupScreen'));
+const MyTripsScreen = dynamic(() => import('@/components/screens/trips/MyTripsScreen'));
+const SharedTripScreen = dynamic(() => import('@/components/screens/shared/SharedTripScreen'));
 
 export default function Home() {
   const { setIsMobile } = useTripStore();

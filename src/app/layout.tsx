@@ -1,20 +1,20 @@
 import type { Metadata } from 'next';
-// Next.js 최적화 폰트 불러오기
-import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google';
-import './globals.css'; // 👈 글로벌 스타일 임포트 필수!
+import localFont from 'next/font/local';
+import './globals.css';
 import AuthProvider from '@/components/providers/AuthProvider';
 
-// 폰트 설정
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-jakarta', // CSS 변수로 사용
+const jakarta = localFont({
+  src: './fonts/PlusJakartaSans[wght].woff2',
+  variable: '--font-jakarta',
   display: 'swap',
+  weight: '200 800',
 });
 
-const playfair = Playfair_Display({
-  subsets: ['latin'],
+const playfair = localFont({
+  src: './fonts/PlayfairDisplay[wght].woff2',
   variable: '--font-playfair',
   display: 'swap',
+  weight: '400 900',
 });
 
 export const metadata: Metadata = {

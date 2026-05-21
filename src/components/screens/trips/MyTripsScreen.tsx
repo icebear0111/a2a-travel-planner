@@ -6,7 +6,7 @@ import { Calendar, Trash2, ChevronRight, Loader2, MapPin } from 'lucide-react';
 import Header from '@/components/ui/Header';
 import { useTripStore } from '@/stores/tripStore';
 import { useAuthStore } from '@/stores/authStore';
-import { SavedTrip } from '@/lib/firebase';
+import type { SavedTrip } from '@/lib/firebase';
 
 interface MyTripsScreenProps {
   onNavigate: (screen: string) => void;
@@ -161,4 +161,3 @@ export default function MyTripsScreen({ onNavigate }: MyTripsScreenProps) {
     </div>
   );
 }
-

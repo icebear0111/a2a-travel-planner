@@ -11,7 +11,7 @@ interface SignupScreenProps {
   onNavigate: (screen: string) => void;
 }
 
-export default function SignupScreen({ onBack, onNavigate }: SignupScreenProps) {
+export default function SignupScreen({ onNavigate }: SignupScreenProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

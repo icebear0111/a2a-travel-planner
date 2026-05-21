@@ -6,6 +6,8 @@
   --foreground-rgb: 15, 23, 42; /* 아주 진한 네이비/블랙 */
   --background-start-rgb: 255, 255, 255;
   --background-end-rgb: 250, 250, 250;
+  --font-jakarta: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Segoe UI", Arial, sans-serif;
+  --font-playfair: Georgia, "Times New Roman", serif;
 }
 
 body {

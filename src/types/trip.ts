@@ -31,6 +31,11 @@ export interface UserInput {
   flight: FlightInput;
   hotels: HotelInput[];
   mustVisitPlaces?: string[]; // 꼭 가고 싶은 장소
+  travelStyle?: string; // 대표 여행 컨셉
+  travelKeywords?: string[]; // 보조 컨셉 키워드
+  pace?: 'relaxed' | 'balanced' | 'packed'; // 일정 밀도
+  budgetPreference?: 'budget' | 'balanced' | 'premium'; // 비용 성향
+  transportPreference?: 'public' | 'walk-light' | 'flexible'; // 이동 성향
 }
 
 // ============================================
@@ -44,6 +49,11 @@ export interface Intent {
   companion: string;
   budgetLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   themes: string[];
+  travelStyle?: string;
+  travelKeywords?: string[];
+  pace?: UserInput['pace'];
+  budgetPreference?: UserInput['budgetPreference'];
+  transportPreference?: UserInput['transportPreference'];
 }
 
 // ============================================
@@ -71,6 +81,15 @@ export interface Activity {
   type: ActivityType;
   duration: string;
   price?: number;
+  location?: string;
+  address?: string;
+  placeId?: string;
+  coordinate?: { lat: number; lng: number };
+  isPlaceValidated?: boolean;
+  travelTimeToNext?: string;
+  travelDistanceToNext?: string;
+  travelMinutesToNext?: number;
+  travelMetersToNext?: number;
 }
 
 // 일별 일정 (DaySchedule) 타입

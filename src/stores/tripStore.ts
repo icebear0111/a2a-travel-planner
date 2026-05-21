@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { initialAgentStatus } from '@/constants/initialData';
+import { initialAgentStatus, sampleTrips, SampleTrip } from '@/constants/initialData';
 import {
   TripStoreState,
   FlightInput,
@@ -8,7 +8,17 @@ import {
   TripData,
   DaySchedule,
   BudgetData,
+  Activity,
+  ActivityType,
 } from '@/types/trip';
+import { ApiActivity, ApiDayItem, StreamPayload } from '@/types/api';
+import { fetchUnsplashImage } from '@/lib/utils/unsplash';
+import {
+  safeCastActivityType,
+  mapStreamStatusToStoreStatus,
+  generateId,
+} from '@/lib/utils/typeHelpers';
+import type { SavedTrip, SharedTrip } from '@/lib/firebase';
 
 // 빈 초기값 정의
 const emptyTripData: TripData = {
@@ -27,23 +37,172 @@ const emptyBudgetData: BudgetData = {
   breakdown: [],
   dailyBudget: [],
 };
-import { StreamPayload } from '@/types/api';
-import { fetchUnsplashImage } from '@/lib/utils/unsplash';
-import {
-  safeCastActivityType,
-  mapStreamStatusToStoreStatus,
-  generateId,
-} from '@/lib/utils/typeHelpers';
-import {
-  saveTrip,
-  getTrips,
-  getTrip,
-  deleteTrip,
-  SavedTrip,
-  shareTrip,
-  getSharedTrip,
-  SharedTrip,
-} from '@/lib/firebase';
+
+const removeActivityIcon = (activity: DaySchedule['activities'][0]) => {
+  const cleanActivity = { ...activity };
+  delete cleanActivity.icon;
+  Object.keys(cleanActivity).forEach((key) => {
+    const typedKey = key as keyof typeof cleanActivity;
+    if (cleanActivity[typedKey] === undefined) {
+      delete cleanActivity[typedKey];
+    }
+  });
+  return cleanActivity;
+};
+
+const removeBudgetIcon = (breakdown: BudgetData['breakdown'][0]) => {
+  const cleanBreakdown = { ...breakdown };
+  delete cleanBreakdown.icon;
+  Object.keys(cleanBreakdown).forEach((key) => {
+    const typedKey = key as keyof typeof cleanBreakdown;
+    if (cleanBreakdown[typedKey] === undefined) {
+      delete cleanBreakdown[typedKey];
+    }
+  });
+  return cleanBreakdown;
+};
+
+const ACTIVITY_CATEGORY_LABELS: Record<ActivityType, string> = {
+  flight: '항공',
+  hotel: '숙소',
+  food: '식비',
+  coffee: '식비',
+  shopping: '쇼핑',
+  sightseeing: '관광',
+  theme: '관광',
+  transport: '교통',
+  etc: '기타',
+};
+
+const buildBudgetFromSchedule = (
+  currentBudget: BudgetData,
+  scheduleData: DaySchedule[]
+): BudgetData => {
+  const fixedFlightCost =
+    currentBudget.breakdown.find((item) => item.category === '항공')?.amount || 0;
+  const fixedHotelCost =
+    currentBudget.breakdown.find((item) => item.category === '숙소')?.amount || 0;
+  const totals: Record<string, number> = {};
+  const dailyBudget = scheduleData.map((day) => {
+    const amount = day.activities.reduce((sum, activity) => {
+      const price = activity.price || 0;
+      const category = ACTIVITY_CATEGORY_LABELS[activity.type] || '기타';
+
+      if (category !== '항공' && category !== '숙소') {
+        totals[category] = (totals[category] || 0) + price;
+        return sum + price;
+      }
+
+      return sum;
+    }, 0);
+
+    return { day: day.day, amount };
+  });
+  const total =
+    fixedFlightCost +
+    fixedHotelCost +
+    Object.values(totals).reduce((sum, amount) => sum + amount, 0);
+  const getPercent = (amount: number) => (total > 0 ? Math.round((amount / total) * 100) : 0);
+  const breakdown = [
+    { category: '항공', amount: fixedFlightCost },
+    { category: '숙소', amount: fixedHotelCost },
+    ...Object.entries(totals).map(([category, amount]) => ({ category, amount })),
+  ]
+    .filter((item) => item.amount > 0)
+    .map((item) => ({
+      ...item,
+      percent: getPercent(item.amount),
+    }));
+
+  return {
+    ...currentBudget,
+    total,
+    breakdown,
+    dailyBudget,
+  };
+};
+
+const createScheduleActivity = (
+  type: ActivityType = 'etc',
+  overrides: Partial<Activity> = {}
+): Activity => ({
+  id: generateId(),
+  time: '10:00',
+  title: '새 일정',
+  desc: '직접 추가한 일정',
+  type,
+  duration: '1시간',
+  price: 0,
+  ...overrides,
+});
+
+type RegenerateMode = 'balanced' | 'cheaper' | 'relaxed' | 'fuller';
+
+const mapApiActivityToScheduleActivity = (
+  act: ApiActivity,
+  destination: string,
+  fallbackId?: string
+): Activity => ({
+  id: act.id || fallbackId || generateId(),
+  title: act.title,
+  desc: act.desc || (act.type === 'sightseeing' ? '관광 명소' : '추천 장소'),
+  type: safeCastActivityType(act.type),
+  price: act.price || 0,
+  time: act.time,
+  duration: act.duration,
+  location: act.location || destination,
+  address: act.address,
+  placeId: act.placeId,
+  coordinate: act.coordinate,
+  isPlaceValidated: act.isPlaceValidated,
+  travelTimeToNext: act.travelTimeToNext,
+  travelDistanceToNext: act.travelDistanceToNext,
+  travelMinutesToNext: act.travelMinutesToNext,
+  travelMetersToNext: act.travelMetersToNext,
+});
+
+const mapApiDayToScheduleDay = (
+  dayItem: ApiDayItem,
+  destination: string,
+  existingDay?: DaySchedule
+): DaySchedule => ({
+  day: dayItem.day,
+  date: existingDay?.date || `Day ${dayItem.day}`,
+  theme: existingDay?.theme || 'AI 추천 코스',
+  activities: dayItem.activities.map((act) => mapApiActivityToScheduleActivity(act, destination)),
+});
+
+const serializeActivityForApi = (activity: Activity) => {
+  const cleanActivity = removeActivityIcon(activity);
+  return {
+    ...cleanActivity,
+    desc: cleanActivity.desc || '',
+    price: cleanActivity.price || 0,
+  };
+};
+
+const getReadableResponseError = async (response: Response) => {
+  const rawText = await response.text().catch(() => '');
+  const plainText = rawText
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return plainText || `서버 응답 오류 (${response.status})`;
+};
+
+const readSseData = (rawEvent: string) => {
+  const data = rawEvent
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.replace(/^data:\s?/, ''))
+    .join('\n')
+    .trim();
+
+  return data || null;
+};
 
 // Store State 확장 인터페이스
 interface ExtendedTripStoreState extends TripStoreState {
@@ -52,6 +211,9 @@ interface ExtendedTripStoreState extends TripStoreState {
   currentTripId: string | null;
   isSaving: boolean;
   isSharing: boolean;
+  isRegeneratingSchedule: boolean;
+  regeneratingDay: number | null;
+  regeneratingActivityId: string | null;
   currentShareId: string | null;
 
   // 액션 함수들
@@ -68,11 +230,21 @@ interface ExtendedTripStoreState extends TripStoreState {
   loadMyTrips: (userId: string) => Promise<void>;
   loadTrip: (userId: string, tripId: string) => Promise<void>;
   deleteSavedTrip: (userId: string, tripId: string) => Promise<void>;
+  persistCurrentTrip: (userId: string) => Promise<string | null>;
   resetTrip: () => void;
 
   // 공유 관련 액션
   shareTripAndGetUrl: (userName: string) => Promise<string | null>;
   loadSharedTrip: (shareId: string) => Promise<SharedTrip | null>;
+
+  // 샘플 일정 로드
+  loadSampleTrip: (sampleId: string) => boolean;
+
+  // 일정 편집 액션
+  addScheduleItem: (dayIndex: number, activity?: Partial<Activity>) => void;
+  moveScheduleItem: (dayIndex: number, sourceId: string, targetId: string) => void;
+  regenerateDay: (dayIndex: number, mode?: RegenerateMode) => Promise<boolean>;
+  replaceActivityWithAI: (dayIndex: number, itemId: string) => Promise<boolean>;
 }
 
 // 5. Store 구현
@@ -95,11 +267,19 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   currentTripId: null,
   isSaving: false,
   isSharing: false,
+  isRegeneratingSchedule: false,
+  regeneratingDay: null,
+  regeneratingActivityId: null,
   currentShareId: null,
 
   userInput: {
     destination: '',
     mustVisitPlaces: [],
+    travelStyle: 'relaxed',
+    travelKeywords: [],
+    pace: 'balanced',
+    budgetPreference: 'balanced',
+    transportPreference: 'flexible',
     flight: {
       originAirportCode: '',
       destAirportCode: '',
@@ -214,45 +394,55 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         body: JSON.stringify({ userRequest: input }),
       });
 
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok || !contentType.includes('text/event-stream')) {
+        const message = await getReadableResponseError(response);
+        throw new Error(message);
+      }
+
       if (!response.body) throw new Error('ReadableStream not supported.');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
+      let buffer = '';
 
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        const chunkValue = decoder.decode(value);
+      const handleRawEvent = async (rawEvent: string) => {
+        const jsonStr = readSseData(rawEvent);
+        if (!jsonStr) {
+          if (rawEvent.trim().startsWith('<')) {
+            throw new Error('서버가 스트림 대신 HTML 응답을 반환했습니다.');
+          }
+          return;
+        }
 
-        const lines = chunkValue.split('\n\n').filter((line) => line.trim() !== '');
+        let parsed: StreamPayload;
+        try {
+          parsed = JSON.parse(jsonStr) as StreamPayload;
+        } catch (error) {
+          console.error('SSE JSON Parse Error:', error, 'Raw:', jsonStr);
+          throw new Error('여행 계획 스트림을 해석하는 중 문제가 발생했습니다.');
+        }
 
-        for (const line of lines) {
-          const jsonStr = line.replace('data: ', '');
-          if (!jsonStr) continue;
+        // (A) 진행 상황 업데이트
+        if (parsed.type === 'progress') {
+          const { stepIndex, status } = parsed;
+          const currentAgents = get().currentAgentStatus;
 
-          try {
-            const parsed = JSON.parse(jsonStr) as StreamPayload;
+          if (currentAgents[stepIndex]) {
+            const newAgents = [...currentAgents];
+            const storeStatus = mapStreamStatusToStoreStatus(status);
+            newAgents[stepIndex] = { ...newAgents[stepIndex], status: storeStatus };
+            set({ currentAgentStatus: newAgents });
+          }
+        }
 
-            // (A) 진행 상황 업데이트
-            if (parsed.type === 'progress') {
-              const { stepIndex, status } = parsed;
-              const currentAgents = get().currentAgentStatus;
+        // (B) 최종 결과 수신
+        else if (parsed.type === 'result') {
+          const data = parsed.data;
+          console.log('✨ 최종 데이터 수신:', data);
 
-              if (currentAgents[stepIndex]) {
-                const newAgents = [...currentAgents];
-                const storeStatus = mapStreamStatusToStoreStatus(status);
-                newAgents[stepIndex] = { ...newAgents[stepIndex], status: storeStatus };
-                set({ currentAgentStatus: newAgents });
-              }
-            }
-
-            // (B) 최종 결과 수신
-            else if (parsed.type === 'result') {
-              const data = parsed.data;
-              console.log('✨ 최종 데이터 수신:', data);
-
-              const realImageUrl = await fetchUnsplashImage(data.intent.destination);
+          const realImageUrl = await fetchUnsplashImage(data.intent.destination);
 
               // 1) 여행 기본 정보 매핑
               const newTripData = {
@@ -264,30 +454,27 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
               };
 
               // 2) 일정 정보 매핑
-              const newScheduleData = data.itinerary.map((dayItem) => ({
-                day: dayItem.day,
-                date: `Day ${dayItem.day}`,
-                theme: 'AI 추천 코스',
-                activities: dayItem.activities.map((act) => ({
-                  id: act.id || generateId(),
-                  title: act.title,
-                  desc: act.desc || (act.type === 'sightseeing' ? '관광 명소' : '추천 장소'),
-                  type: safeCastActivityType(act.type),
-                  price: act.price || 0,
-                  time: act.time,
-                  duration: act.duration,
-                  location: act.location || data.intent.destination,
-                })),
-              }));
+              const newScheduleData = data.itinerary.map((dayItem) =>
+                mapApiDayToScheduleDay(dayItem, data.intent.destination)
+              );
 
               // 3) 예산 정보 매핑
-              const totalFlightCost = data.flight.price;
-              const totalHotelCost = data.hotel.price;
+              const totalFlightCost = data.flight.price || 0;
+              const nights = Math.max(0, (data.intent.duration || 1) - 1);
+              const totalHotelCost = (data.hotel.price || 0) * nights;
 
               let foodCost = 0;
               let shoppingCost = 0;
               let sightseeingCost = 0;
               let etcCost = 0;
+              const dailyBudget = newScheduleData.map((day) => {
+                const amount = day.activities.reduce((sum, act) => {
+                  if (act.type === 'flight' || act.type === 'hotel') return sum;
+                  return sum + (act.price || 0);
+                }, 0);
+
+                return { day: day.day, amount };
+              });
 
               newScheduleData.forEach((day) => {
                 day.activities.forEach((act) => {
@@ -324,12 +511,15 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
                 shoppingCost +
                 sightseeingCost +
                 etcCost;
+              const apiTotalCost = data.budget?.totalCost;
+              const displayTotal =
+                typeof apiTotalCost === 'number' && apiTotalCost > 0 ? apiTotalCost : calculatedTotal;
 
               const getPercent = (amount: number) =>
-                calculatedTotal > 0 ? Math.round((amount / calculatedTotal) * 100) : 0;
+                displayTotal > 0 ? Math.round((amount / displayTotal) * 100) : 0;
 
               const newBudgetData = {
-                total: calculatedTotal,
+                total: displayTotal,
                 currency: { rate: 1, unit: 'KRW' },
                 breakdown: [
                   {
@@ -347,7 +537,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
                   },
                   { category: '기타', amount: etcCost, percent: getPercent(etcCost) },
                 ].filter((item) => item.amount > 0),
-                dailyBudget: [],
+                dailyBudget,
               };
 
               set({
@@ -357,18 +547,36 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
                 selectedDay: 1,
               });
 
-              console.log('🎉 UI 업데이트 완료! 제목:', newTripData.title);
-            } else if (parsed.type === 'error') {
-              throw new Error(parsed.message);
-            }
-          } catch (e) {
-            console.error('JSON Parse Error:', e, 'Raw:', jsonStr);
-          }
+          console.log('🎉 UI 업데이트 완료! 제목:', newTripData.title);
+        } else if (parsed.type === 'error') {
+          throw new Error(parsed.message);
         }
+      };
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        buffer += decoder.decode(value, { stream: !doneReading });
+
+        let eventBoundary = buffer.indexOf('\n\n');
+        while (eventBoundary !== -1) {
+          const rawEvent = buffer.slice(0, eventBoundary);
+          buffer = buffer.slice(eventBoundary + 2);
+          if (rawEvent.trim()) {
+            await handleRawEvent(rawEvent);
+          }
+          eventBoundary = buffer.indexOf('\n\n');
+        }
+      }
+
+      if (buffer.trim()) {
+        await handleRawEvent(buffer);
       }
     } catch (error) {
       console.error('Stream Error:', error);
-      alert('여행 계획을 생성하는 중 문제가 발생했습니다.');
+      const message =
+        error instanceof Error ? error.message : '여행 계획을 생성하는 중 문제가 발생했습니다.';
+      alert(message);
     } finally {
       set({ isGenerating: false });
     }
@@ -387,8 +595,191 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         }
         return daySchedule;
       });
-      return { scheduleData: newScheduleData };
+      return {
+        scheduleData: newScheduleData,
+        budgetData: buildBudgetFromSchedule(state.budgetData, newScheduleData),
+      };
     }),
+
+  addScheduleItem: (dayIndex, activity) =>
+    set((state) => {
+      const newActivity = createScheduleActivity(
+        safeCastActivityType(activity?.type || 'etc'),
+        activity
+      );
+      const newScheduleData = state.scheduleData.map((daySchedule) => {
+        if (daySchedule.day === dayIndex) {
+          return {
+            ...daySchedule,
+            activities: [...daySchedule.activities, newActivity],
+          };
+        }
+        return daySchedule;
+      });
+
+      return {
+        scheduleData: newScheduleData,
+        selectedActivityId: newActivity.id,
+        budgetData: buildBudgetFromSchedule(state.budgetData, newScheduleData),
+      };
+    }),
+
+  moveScheduleItem: (dayIndex, sourceId, targetId) =>
+    set((state) => {
+      if (sourceId === targetId) return state;
+
+      const newScheduleData = state.scheduleData.map((daySchedule) => {
+        if (daySchedule.day !== dayIndex) return daySchedule;
+
+        const activities = [...daySchedule.activities];
+        const sourceIndex = activities.findIndex((item) => item.id === sourceId);
+        const targetIndex = activities.findIndex((item) => item.id === targetId);
+
+        if (sourceIndex === -1 || targetIndex === -1) return daySchedule;
+
+        const [movedItem] = activities.splice(sourceIndex, 1);
+        activities.splice(targetIndex, 0, movedItem);
+
+        return {
+          ...daySchedule,
+          activities,
+        };
+      });
+
+      return {
+        scheduleData: newScheduleData,
+        budgetData: buildBudgetFromSchedule(state.budgetData, newScheduleData),
+      };
+    }),
+
+  regenerateDay: async (dayIndex, mode = 'balanced') => {
+    const { userInput, scheduleData, budgetData, tripData } = get();
+    const currentDay = scheduleData.find((day) => day.day === dayIndex);
+
+    if (!currentDay) {
+      alert('다시 생성할 날짜를 찾을 수 없습니다.');
+      return false;
+    }
+
+    set({
+      isRegeneratingSchedule: true,
+      regeneratingDay: dayIndex,
+      regeneratingActivityId: null,
+    });
+
+    try {
+      const response = await fetch('/api/regenerate-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userRequest: userInput,
+          dayNumber: dayIndex,
+          totalDays: scheduleData.length || tripData.days,
+          mode,
+          currentDay: {
+            day: currentDay.day,
+            activities: currentDay.activities.map(serializeActivityForApi),
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorData?.error || '일정 재생성에 실패했습니다.');
+      }
+
+      const data = (await response.json()) as { day: ApiDayItem };
+      const destination = userInput.destination || tripData.title;
+      const regeneratedDay = mapApiDayToScheduleDay(data.day, destination, currentDay);
+      const newScheduleData = scheduleData.map((day) =>
+        day.day === dayIndex ? regeneratedDay : day
+      );
+
+      set({
+        scheduleData: newScheduleData,
+        budgetData: buildBudgetFromSchedule(budgetData, newScheduleData),
+        isRegeneratingSchedule: false,
+        regeneratingDay: null,
+        regeneratingActivityId: null,
+      });
+
+      return true;
+    } catch (error) {
+      console.error('일정 재생성 실패:', error);
+      alert(error instanceof Error ? error.message : '일정 재생성에 실패했습니다.');
+      set({ isRegeneratingSchedule: false, regeneratingDay: null, regeneratingActivityId: null });
+      return false;
+    }
+  },
+
+  replaceActivityWithAI: async (dayIndex, itemId) => {
+    const { userInput, scheduleData, budgetData, tripData } = get();
+    const currentDay = scheduleData.find((day) => day.day === dayIndex);
+    const targetActivity = currentDay?.activities.find((activity) => activity.id === itemId);
+
+    if (!currentDay || !targetActivity) {
+      alert('대체할 일정을 찾을 수 없습니다.');
+      return false;
+    }
+
+    set({
+      isRegeneratingSchedule: true,
+      regeneratingDay: null,
+      regeneratingActivityId: itemId,
+    });
+
+    try {
+      const response = await fetch('/api/regenerate-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userRequest: userInput,
+          dayNumber: dayIndex,
+          totalDays: scheduleData.length || tripData.days,
+          mode: 'replace-activity',
+          currentDay: {
+            day: currentDay.day,
+            activities: currentDay.activities.map(serializeActivityForApi),
+          },
+          targetActivity: serializeActivityForApi(targetActivity),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorData?.error || '일정 대체에 실패했습니다.');
+      }
+
+      const data = (await response.json()) as { activity: ApiActivity };
+      const destination = userInput.destination || tripData.title;
+      const replacement = mapApiActivityToScheduleActivity(data.activity, destination, itemId);
+      const newScheduleData = scheduleData.map((daySchedule) => {
+        if (daySchedule.day !== dayIndex) return daySchedule;
+
+        return {
+          ...daySchedule,
+          activities: daySchedule.activities.map((activity) =>
+            activity.id === itemId ? replacement : activity
+          ),
+        };
+      });
+
+      set({
+        scheduleData: newScheduleData,
+        budgetData: buildBudgetFromSchedule(budgetData, newScheduleData),
+        isRegeneratingSchedule: false,
+        regeneratingDay: null,
+        regeneratingActivityId: null,
+      });
+
+      return true;
+    } catch (error) {
+      console.error('일정 대체 실패:', error);
+      alert(error instanceof Error ? error.message : '일정 대체에 실패했습니다.');
+      set({ isRegeneratingSchedule: false, regeneratingDay: null, regeneratingActivityId: null });
+      return false;
+    }
+  },
 
   deleteScheduleItem: (dayIndex, itemId) =>
     set((state) => {
@@ -402,24 +793,10 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
         return daySchedule;
       });
 
-      let reducedTotal = state.budgetData.total;
-      const targetDay = state.scheduleData.find((d) => d.day === dayIndex);
-      const deletedItem = targetDay?.activities.find((item) => item.id === itemId);
-
-      if (deletedItem) {
-        const itemWithPrice = deletedItem as { price?: number };
-        const price = itemWithPrice.price || 50000;
-        reducedTotal -= price;
-      } else {
-        reducedTotal -= 50000;
-      }
-
       return {
         scheduleData: newScheduleData,
-        budgetData: {
-          ...state.budgetData,
-          total: reducedTotal > 0 ? reducedTotal : 0,
-        },
+        selectedActivityId: state.selectedActivityId === itemId ? null : state.selectedActivityId,
+        budgetData: buildBudgetFromSchedule(state.budgetData, newScheduleData),
       };
     }),
 
@@ -440,15 +817,17 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
     set({ isSaving: true });
 
     try {
+      const { saveTrip } = await import('@/lib/firebase');
+
       // icon 필드 제거 (Firestore 저장 불가)
       const cleanScheduleData = scheduleData.map((day) => ({
         ...day,
-        activities: day.activities.map(({ icon, ...rest }) => rest),
+        activities: day.activities.map(removeActivityIcon),
       }));
 
       const cleanBudgetData = {
         ...budgetData,
-        breakdown: budgetData.breakdown.map(({ icon, ...rest }) => rest),
+        breakdown: budgetData.breakdown.map(removeBudgetIcon),
       };
 
       const tripId = await saveTrip(userId, {
@@ -470,6 +849,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   // 내 여행 목록 불러오기
   loadMyTrips: async (userId: string) => {
     try {
+      const { getTrips } = await import('@/lib/firebase');
       const trips = await getTrips(userId);
       set({ savedTrips: trips });
     } catch (error) {
@@ -480,6 +860,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   // 특정 여행 불러오기
   loadTrip: async (userId: string, tripId: string) => {
     try {
+      const { getTrip } = await import('@/lib/firebase');
       const trip = await getTrip(userId, tripId);
       if (trip) {
         set({
@@ -489,6 +870,9 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
           budgetData: trip.budgetData as BudgetData,
           currentTripId: tripId,
           selectedDay: 1,
+          isRegeneratingSchedule: false,
+          regeneratingDay: null,
+          regeneratingActivityId: null,
         });
       }
     } catch (error) {
@@ -499,6 +883,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   // 저장된 여행 삭제
   deleteSavedTrip: async (userId: string, tripId: string) => {
     try {
+      const { deleteTrip } = await import('@/lib/firebase');
       await deleteTrip(userId, tripId);
       set((state) => ({
         savedTrips: state.savedTrips.filter((t) => t.id !== tripId),
@@ -506,6 +891,42 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       }));
     } catch (error) {
       console.error('여행 삭제 실패:', error);
+    }
+  },
+
+  persistCurrentTrip: async (userId: string) => {
+    const { currentTripId, userInput, tripData, scheduleData, budgetData, saveCurrentTrip } = get();
+
+    if (!currentTripId) {
+      return saveCurrentTrip(userId);
+    }
+
+    set({ isSaving: true });
+
+    try {
+      const { updateTrip } = await import('@/lib/firebase');
+      const cleanScheduleData = scheduleData.map((day) => ({
+        ...day,
+        activities: day.activities.map(removeActivityIcon),
+      }));
+      const cleanBudgetData = {
+        ...budgetData,
+        breakdown: budgetData.breakdown.map(removeBudgetIcon),
+      };
+
+      await updateTrip(userId, currentTripId, {
+        userInput,
+        tripData,
+        scheduleData: cleanScheduleData,
+        budgetData: cleanBudgetData,
+      });
+
+      set({ isSaving: false });
+      return currentTripId;
+    } catch (error) {
+      console.error('여행 수정 저장 실패:', error);
+      set({ isSaving: false });
+      return null;
     }
   },
 
@@ -519,9 +940,17 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       currentShareId: null,
       selectedDay: 1,
       selectedActivityId: null,
+      isRegeneratingSchedule: false,
+      regeneratingDay: null,
+      regeneratingActivityId: null,
       userInput: {
         destination: '',
         mustVisitPlaces: [],
+        travelStyle: 'relaxed',
+        travelKeywords: [],
+        pace: 'balanced',
+        budgetPreference: 'balanced',
+        transportPreference: 'flexible',
         flight: {
           originAirportCode: '',
           destAirportCode: '',
@@ -557,15 +986,17 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
     set({ isSharing: true });
 
     try {
+      const { shareTrip } = await import('@/lib/firebase');
+
       // icon 필드 제거
       const cleanScheduleData = scheduleData.map((day) => ({
         ...day,
-        activities: day.activities.map(({ icon, ...rest }) => rest),
+        activities: day.activities.map(removeActivityIcon),
       }));
 
       const cleanBudgetData = {
         ...budgetData,
-        breakdown: budgetData.breakdown.map(({ icon, ...rest }) => rest),
+        breakdown: budgetData.breakdown.map(removeBudgetIcon),
       };
 
       const shareId = await shareTrip({
@@ -588,6 +1019,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   // 공유된 여행 불러오기
   loadSharedTrip: async (shareId: string) => {
     try {
+      const { getSharedTrip } = await import('@/lib/firebase');
       const sharedTrip = await getSharedTrip(shareId);
       if (sharedTrip) {
         set({
@@ -597,6 +1029,9 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
           budgetData: sharedTrip.budgetData as BudgetData,
           currentShareId: shareId,
           selectedDay: 1,
+          isRegeneratingSchedule: false,
+          regeneratingDay: null,
+          regeneratingActivityId: null,
         });
         return sharedTrip;
       }
@@ -605,5 +1040,29 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       console.error('공유 여행 불러오기 실패:', error);
       return null;
     }
+  },
+
+  // 샘플 일정 로드
+  loadSampleTrip: (sampleId: string) => {
+    const sample = sampleTrips.find((trip: SampleTrip) => trip.id === sampleId);
+    if (!sample) {
+      console.error('샘플 일정을 찾을 수 없습니다:', sampleId);
+      return false;
+    }
+
+    set({
+      userInput: sample.userInput,
+      tripData: sample.tripData,
+      scheduleData: sample.scheduleData as DaySchedule[],
+      budgetData: sample.budgetData as BudgetData,
+      currentTripId: null,
+      currentShareId: null,
+      selectedDay: 1,
+      isRegeneratingSchedule: false,
+      regeneratingDay: null,
+      regeneratingActivityId: null,
+    });
+
+    return true;
   },
 }));

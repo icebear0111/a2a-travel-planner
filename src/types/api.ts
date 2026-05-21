@@ -10,6 +10,11 @@ export interface ApiIntent {
   budgetLevel: string;
   companion: string;
   themes: string[];
+  travelStyle?: string;
+  travelKeywords?: string[];
+  pace?: 'relaxed' | 'balanced' | 'packed';
+  budgetPreference?: 'budget' | 'balanced' | 'premium';
+  transportPreference?: 'public' | 'walk-light' | 'flexible';
 }
 
 // Flight 에이전트 응답
@@ -29,6 +34,8 @@ export interface ApiHotel {
   address: string;
   coordinate: { lat: number; lng: number };
   rating: string;
+  placeId?: string;
+  isPlaceValidated?: boolean;
 }
 
 // Budget 에이전트 응답
@@ -36,6 +43,16 @@ export interface ApiBudget {
   status: 'PASS' | 'FAIL';
   totalCost: number;
   currency: string;
+  maxBudget?: number;
+  breakdown?: {
+    flight: number;
+    hotel: number;
+    activity: number;
+  };
+  suggestion?: {
+    target: 'HOTEL' | 'ROUTE';
+    reason: string;
+  };
 }
 
 // 활동 데이터
@@ -48,6 +65,14 @@ export interface ApiActivity {
   time: string;
   duration: string;
   location?: string;
+  address?: string;
+  placeId?: string;
+  coordinate?: { lat: number; lng: number };
+  isPlaceValidated?: boolean;
+  travelTimeToNext?: string;
+  travelDistanceToNext?: string;
+  travelMinutesToNext?: number;
+  travelMetersToNext?: number;
 }
 
 // 일별 일정

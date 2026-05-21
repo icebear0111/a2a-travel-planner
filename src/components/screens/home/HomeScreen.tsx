@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
 import { ArrowRight, MapPin, Search } from 'lucide-react';
-import { homeSuggestions, homeRecentTrips } from '@/constants/initialData';
+import { homeSuggestions, sampleTrips } from '@/constants/initialData';
 import { useTripStore } from '@/stores/tripStore';
+
+const RecommendModal = dynamic(() => import('@/components/ui/RecommendModal'));
 
 interface HomeScreenProps {
   isMobile: boolean;
@@ -15,8 +18,25 @@ interface HomeScreenProps {
 
 export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
   const [inputValue, setInputValue] = useState('');
+  const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
 
-  const { setUserInput } = useTripStore();
+  const { setUserInput, loadSampleTrip } = useTripStore();
+
+  // 샘플 일정 카드 클릭 핸들러
+  const handleSampleTripClick = (sampleId: string) => {
+    const success = loadSampleTrip(sampleId);
+    if (success) {
+      onNavigate('result');
+    }
+  };
+
+  // AI 추천 여행지 선택 핸들러
+  const handleSelectRecommendation = (destination: string) => {
+    // 국가 정보 제거 (예: "오사카 (일본)" -> "오사카")
+    const cleanDestination = destination.split('(')[0].trim();
+    setUserInput({ destination: cleanDestination });
+    onNavigate('setup');
+  };
 
   const handleStart = () => {
     if (!inputValue.trim()) {
@@ -113,10 +133,13 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:h-[500px]">
             {/* 큰 카드 */}
-            <div className="group md:col-span-2 relative rounded-3xl overflow-hidden bg-slate-100 cursor-pointer h-80 md:h-auto">
+            <div
+              onClick={() => handleSampleTripClick(sampleTrips[0].id)}
+              className="group md:col-span-2 relative rounded-3xl overflow-hidden bg-slate-100 cursor-pointer h-80 md:h-auto"
+            >
               <Image
-                src={homeRecentTrips[0].image}
-                alt={homeRecentTrips[0].title}
+                src={sampleTrips[0].image}
+                alt={sampleTrips[0].title}
                 fill
                 className="object-cover transition-transform duration-700 group-hover:scale-105"
               />
@@ -125,19 +148,20 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
                 <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-medium border border-white/20 mb-3 inline-block">
                   Trending
                 </span>
-                <h3 className="text-3xl md:text-4xl font-bold mb-2">{homeRecentTrips[0].title}</h3>
-                <p className="text-white/80 line-clamp-2 max-w-md">
-                  현대적인 네온 사인과 전통적인 문화가 공존하는 매력적인 도시.
-                </p>
+                <h3 className="text-3xl md:text-4xl font-bold mb-2">{sampleTrips[0].title}</h3>
+                <p className="text-white/80 line-clamp-2 max-w-md">{sampleTrips[0].description}</p>
               </div>
             </div>
 
             {/* 작은 카드들 */}
             <div className="flex flex-col gap-4">
-              <div className="flex-1 relative rounded-3xl overflow-hidden bg-slate-100 group cursor-pointer h-60 md:h-auto">
+              <div
+                onClick={() => handleSampleTripClick(sampleTrips[1].id)}
+                className="flex-1 relative rounded-3xl overflow-hidden bg-slate-100 group cursor-pointer h-60 md:h-auto"
+              >
                 <Image
-                  src={homeRecentTrips[1].image}
-                  alt={homeRecentTrips[1].title}
+                  src={sampleTrips[1].image}
+                  alt={sampleTrips[1].title}
                   fill
                   className="object-cover transition-transform duration-700 group-hover:scale-105"
                 />
@@ -146,12 +170,15 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
                   <ArrowRight className="w-4 h-4" />
                 </div>
                 <div className="absolute bottom-6 left-6 text-white">
-                  <h3 className="text-xl font-bold">{homeRecentTrips[1].title}</h3>
-                  <p className="text-sm opacity-90">미식의 천국</p>
+                  <h3 className="text-xl font-bold">{sampleTrips[1].title}</h3>
+                  <p className="text-sm opacity-90">{sampleTrips[1].description}</p>
                 </div>
               </div>
 
-              <div className="flex-1 bg-slate-50 rounded-3xl p-6 border border-slate-100 hover:border-slate-300 transition-colors cursor-pointer flex flex-col justify-center items-start">
+              <div
+                onClick={() => setIsRecommendModalOpen(true)}
+                className="flex-1 bg-slate-50 rounded-3xl p-6 border border-slate-100 hover:border-slate-300 transition-colors cursor-pointer flex flex-col justify-center items-start"
+              >
                 <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-4 text-orange-600">
                   <MapPin className="w-5 h-5" />
                 </div>
@@ -168,6 +195,15 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
         {/* 5. Footer */}
         <Footer />
       </main>
+
+      {/* AI 추천 모달 */}
+      {isRecommendModalOpen && (
+        <RecommendModal
+          isOpen={isRecommendModalOpen}
+          onClose={() => setIsRecommendModalOpen(false)}
+          onSelectDestination={handleSelectRecommendation}
+        />
+      )}
     </div>
   );
 }

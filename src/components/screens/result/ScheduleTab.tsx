@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Star, EditIcon } from 'lucide-react';
+import { Clock, EditIcon, Loader2, RefreshCcw, Sparkles, Star, Wallet } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 
 interface ScheduleTabProps {
@@ -10,9 +10,24 @@ interface ScheduleTabProps {
 }
 
 export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTabProps) {
-  const { scheduleData, selectedDay, setSelectedDay, setSelectedActivityId } = useTripStore();
+  const {
+    scheduleData,
+    selectedDay,
+    setSelectedDay,
+    setSelectedActivityId,
+    regenerateDay,
+    replaceActivityWithAI,
+    isRegeneratingSchedule,
+    regeneratingDay,
+    regeneratingActivityId,
+  } = useTripStore();
 
   const currentSchedule = scheduleData.find((d) => d.day === selectedDay);
+  const isSelectedDayRegenerating = regeneratingDay === selectedDay;
+
+  const handleRegenerateDay = (mode: 'balanced' | 'cheaper' | 'relaxed') => {
+    void regenerateDay(selectedDay, mode);
+  };
 
   return (
     <div className="animate-fadeInUp">
@@ -36,8 +51,55 @@ export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTa
 
       {/* 날짜 헤더 */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-1">Day {selectedDay}</h2>
-        <p className="text-slate-500">{currentSchedule?.theme}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold mb-1">Day {selectedDay}</h2>
+            <p className="text-slate-500">
+              {isSelectedDayRegenerating
+                ? 'AI가 이 날짜의 동선을 다시 짜고 있어요...'
+                : currentSchedule?.theme}
+            </p>
+          </div>
+
+          {!readOnly && (
+            <div className="flex flex-wrap justify-end gap-2 max-w-[220px]">
+              <button
+                type="button"
+                onClick={() => handleRegenerateDay('balanced')}
+                disabled={isRegeneratingSchedule}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                title="선택한 날짜 전체를 다시 생성"
+              >
+                {isSelectedDayRegenerating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                )}
+                다시
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRegenerateDay('cheaper')}
+                disabled={isRegeneratingSchedule}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                title="선택한 날짜를 저비용 코스로 재생성"
+              >
+                <Wallet className="h-3.5 w-3.5" />
+                저비용
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRegenerateDay('relaxed')}
+                disabled={isRegeneratingSchedule}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                title="선택한 날짜를 여유로운 코스로 재생성"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                여유
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 일정 리스트 */}
@@ -49,6 +111,8 @@ export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTa
         ) : (
           currentSchedule?.activities.map((item, index) => {
             const isLastItem = index === (currentSchedule?.activities.length || 0) - 1;
+            const isReplacing = regeneratingActivityId === item.id;
+            const canReplace = !readOnly && !['flight', 'hotel'].includes(item.type);
 
             const handleClick = () => {
               if (readOnly) return;
@@ -87,11 +151,32 @@ export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTa
                       readOnly ? '' : 'hover:bg-slate-50 hover:border-slate-300 hover:shadow-sm'
                     }`}
                   >
-                    <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-bold text-slate-900 truncate pr-2">{item.title}</h3>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex-shrink-0 bg-slate-100 text-slate-600 border border-slate-200">
-                        {item.type}
-                      </span>
+                    <div className="flex justify-between items-start gap-2 mb-1">
+                      <h3 className="min-w-0 font-bold text-slate-900 truncate">{item.title}</h3>
+                      <div className="flex flex-shrink-0 items-center gap-1.5">
+                        {canReplace && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void replaceActivityWithAI(selectedDay, item.id);
+                            }}
+                            disabled={isRegeneratingSchedule}
+                            className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-500 transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                            title="이 일정만 AI로 대체"
+                          >
+                            {isReplacing ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-3 w-3" />
+                            )}
+                            대체
+                          </button>
+                        )}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                          {item.type}
+                        </span>
+                      </div>
                     </div>
                     <p className="text-sm text-slate-500 line-clamp-1 mb-1">{item.desc}</p>
                     {item.type === 'sightseeing' && (

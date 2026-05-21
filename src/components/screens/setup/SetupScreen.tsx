@@ -8,16 +8,25 @@ import {
   Plane,
   Building2,
   MapPin,
+  Sparkles,
+  Wallet,
+  Clock3,
+  Footprints,
   X,
   Plus,
   ChevronLeft,
   ChevronRight,
-  Check,
 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import Header from '@/components/ui/Header';
 import FlightSection from './FlightSection';
 import HotelSection from './HotelSection';
+import {
+  BUDGET_PREFERENCE_OPTIONS,
+  TRANSPORT_PREFERENCE_OPTIONS,
+  TRAVEL_PACE_OPTIONS,
+  TRAVEL_STYLE_OPTIONS,
+} from '@/lib/utils/travelStyle';
 
 interface SetupScreenProps {
   onBack: () => void;
@@ -25,9 +34,9 @@ interface SetupScreenProps {
   onNavigate: (screen: string) => void;
 }
 
-type Step = 'dates' | 'flight' | 'hotel' | 'places';
+type Step = 'dates' | 'flight' | 'hotel' | 'style' | 'places';
 
-const STEPS: Step[] = ['dates', 'flight', 'hotel', 'places'];
+const STEPS: Step[] = ['dates', 'flight', 'hotel', 'style', 'places'];
 
 const STEP_INFO: Record<
   Step,
@@ -51,12 +60,28 @@ const STEP_INFO: Record<
     title: '숙소 정보',
     subtitle: '머무실 숙소를 입력해주세요',
   },
+  style: {
+    icon: <Sparkles className="w-5 h-5" />,
+    label: '스타일',
+    title: '어떤 여행이 좋으세요?',
+    subtitle: 'AI가 처음부터 이 컨셉에 맞춰 일정을 계획합니다',
+  },
   places: {
     icon: <MapPin className="w-5 h-5" />,
     label: '장소',
     title: '꼭 가고 싶은 곳',
     subtitle: '이곳만큼은 꼭 가야한다! 하는 장소가 있나요?',
   },
+};
+
+const STYLE_ICON_MAP: Record<string, React.ElementType> = {
+  budget: Wallet,
+  relaxed: Clock3,
+  packed: Sparkles,
+  food: MapPin,
+  culture: Building2,
+  nature: Footprints,
+  shopping: Plus,
 };
 
 // ============================================
@@ -69,12 +94,6 @@ const calculateDuration = (startDate: string, endDate: string): number => {
   const diffTime = end.getTime() - start.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   return diffDays;
-};
-
-const formatDateKorean = (dateStr: string): string => {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 };
 
 const formatDateFull = (dateStr: string): string => {
@@ -322,7 +341,6 @@ function InlineCalendar({
             // 스타일링 로직
             let bgClass = 'hover:bg-slate-100';
             let textClass = 'text-slate-700';
-            let roundedClass = 'rounded-full'; // 기본값
 
             if (isPast) {
               textClass = 'text-slate-300 cursor-not-allowed';
@@ -336,16 +354,6 @@ function InlineCalendar({
             } else if (inRange) {
               bgClass = 'bg-slate-100';
               textClass = 'text-slate-900 font-bold';
-              roundedClass = 'rounded-none'; // 범위 내부는 사각형
-
-              // 범위 시작/끝 부분 둥글게 처리 (시각적 연결)
-              const prevDay = day - 1;
-              const nextDay = day + 1;
-              const isStartOfRow = dayOfWeek === 0;
-              const isEndOfRow = dayOfWeek === 6;
-
-              if (isStartOfRow) roundedClass += ' rounded-l-full';
-              if (isEndOfRow) roundedClass += ' rounded-r-full';
             } else {
               if (dayOfWeek === 0) textClass = 'text-rose-500';
               else if (dayOfWeek === 6) textClass = 'text-blue-500';
@@ -406,7 +414,7 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
   const isLastStep = currentStepIndex === STEPS.length - 1;
 
   // 애니메이션
-  const transitionToStep = (nextStep: Step, direction: 'forward' | 'backward') => {
+  const transitionToStep = (nextStep: Step) => {
     setAnimationDirection('exit');
     setIsAnimating(true);
     setTimeout(() => {
@@ -438,9 +446,7 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
           originAirportCode: '',
           destAirportCode: '',
           price: 0,
-          departureDate: '',
           departureTime: '',
-          returnDate: '',
           returnTime: '',
         });
       }
@@ -454,7 +460,7 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
 
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < STEPS.length) {
-      transitionToStep(STEPS[nextIndex], 'forward');
+      transitionToStep(STEPS[nextIndex]);
     } else {
       handleSubmit();
     }
@@ -464,7 +470,7 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
     if (isAnimating) return;
     const prevIndex = currentStepIndex - 1;
     if (prevIndex >= 0) {
-      transitionToStep(STEPS[prevIndex], 'backward');
+      transitionToStep(STEPS[prevIndex]);
     } else {
       onBack();
     }
@@ -484,6 +490,15 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
     const updated = [...mustVisitPlaces];
     updated[index] = value;
     setMustVisitPlaces(updated);
+  };
+  const toggleTravelKeyword = (keyword: string) => {
+    const currentKeywords = userInput.travelKeywords || [];
+    const isSelected = currentKeywords.includes(keyword);
+    const nextKeywords = isSelected
+      ? currentKeywords.filter((item) => item !== keyword)
+      : [...currentKeywords, keyword].slice(0, 3);
+
+    setUserInput({ travelKeywords: nextKeywords });
   };
 
   const contentAnimationClass = isAnimating
@@ -534,6 +549,170 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
                 isUndecided={isHotelUndecided}
                 onUndecidedChange={setIsHotelUndecided}
               />
+            )}
+
+            {currentStep === 'style' && (
+              <div className="space-y-8 animate-fadeInUp">
+                <section>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">대표 컨셉</h2>
+                      <p className="text-sm text-slate-500">가장 중요한 여행 방향 하나를 골라주세요.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
+                      1개 선택
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {TRAVEL_STYLE_OPTIONS.map((option) => {
+                      const Icon = STYLE_ICON_MAP[option.id] || Sparkles;
+                      const isSelected = userInput.travelStyle === option.id;
+
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() =>
+                            setUserInput({
+                              travelStyle: option.id,
+                              travelKeywords: (userInput.travelKeywords || []).filter(
+                                (keyword) => keyword !== option.id
+                              ),
+                            })
+                          }
+                          className={`flex min-h-[104px] items-start gap-4 rounded-2xl border p-4 text-left transition-all ${
+                            isSelected
+                              ? 'border-black bg-black text-white shadow-xl shadow-black/15'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-md'
+                          }`}
+                        >
+                          <div
+                            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                              isSelected ? 'bg-white text-black' : 'bg-slate-100 text-slate-500'
+                            }`}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-bold">{option.label}</h3>
+                            <p
+                              className={`mt-1 text-sm leading-relaxed ${
+                                isSelected ? 'text-white/70' : 'text-slate-500'
+                              }`}
+                            >
+                              {option.description}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">보조 키워드</h2>
+                      <p className="text-sm text-slate-500">추가로 반영할 취향을 최대 3개까지 선택하세요.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
+                      {(userInput.travelKeywords || []).length}/3
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {TRAVEL_STYLE_OPTIONS.filter((option) => option.id !== userInput.travelStyle).map(
+                      (option) => {
+                        const isSelected = (userInput.travelKeywords || []).includes(option.id);
+
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => toggleTravelKeyword(option.id)}
+                            className={`rounded-full border px-4 py-2 text-sm font-bold transition-all ${
+                              isSelected
+                                ? 'border-black bg-black text-white'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </section>
+
+                <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">
+                      일정 밀도
+                    </h2>
+                    <div className="space-y-2">
+                      {TRAVEL_PACE_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setUserInput({ pace: option.id })}
+                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm font-bold transition-all ${
+                            (userInput.pace || 'balanced') === option.id
+                              ? 'border-black bg-black text-white'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">
+                      비용 성향
+                    </h2>
+                    <div className="space-y-2">
+                      {BUDGET_PREFERENCE_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setUserInput({ budgetPreference: option.id })}
+                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm font-bold transition-all ${
+                            (userInput.budgetPreference || 'balanced') === option.id
+                              ? 'border-black bg-black text-white'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">
+                      이동 방식
+                    </h2>
+                    <div className="space-y-2">
+                      {TRANSPORT_PREFERENCE_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setUserInput({ transportPreference: option.id })}
+                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm font-bold transition-all ${
+                            (userInput.transportPreference || 'flexible') === option.id
+                              ? 'border-black bg-black text-white'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </div>
             )}
 
             {currentStep === 'places' && (

@@ -62,7 +62,7 @@ export default function HotelSection({ isUndecided, onUndecidedChange }: HotelSe
         <div className="space-y-6 animate-fadeInUp">
           {userInput.hotels.length === 0 && (
             <div className="text-center py-12 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
-              <p>우측 상단의 '숙소 추가' 버튼을 눌러주세요.</p>
+              <p>우측 상단의 &apos;숙소 추가&apos; 버튼을 눌러주세요.</p>
             </div>
           )}
 

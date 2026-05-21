@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { Intent, UserInput } from './intent';
 import { FlightContext } from './flight';
+import { geocodePlace } from '@/lib/utils/googleMaps';
 
 export interface HotelContext {
   name: string;
@@ -8,6 +9,8 @@ export interface HotelContext {
   price: number;
   coordinate: { lat: number; lng: number };
   rating: string;
+  placeId?: string;
+  isPlaceValidated?: boolean;
 }
 
 const openai = new OpenAI({
@@ -73,24 +76,40 @@ export async function determineHotel(
       if (!content) throw new Error('No content');
       const data = JSON.parse(content);
 
-      console.log(`✅ [3-Hotel] 위치 확인: ${data.address}`);
+      const validatedPlace = await geocodePlace(`${primaryHotel.name}, ${intent.destination}`);
+      const coordinate =
+        validatedPlace.coordinate ||
+        data.coordinate ||
+        FALLBACK_COORDINATES[intent.destination] ||
+        DEFAULT_COORDINATE;
+      const address = validatedPlace.formattedAddress || data.address || intent.destination;
+
+      console.log(`✅ [3-Hotel] 위치 확인: ${address}`);
 
       return {
         name: primaryHotel.name,
-        address: data.address || intent.destination,
+        address,
         price: pricePerNight,
         rating: data.rating || '4.0',
-        coordinate:
-          data.coordinate || FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
+        coordinate,
+        placeId: validatedPlace.placeId,
+        isPlaceValidated: validatedPlace.isValidated,
       };
     } catch (error) {
       console.error('❌ [3-Hotel] 위치 검색 실패:', error);
+      const validatedPlace = await geocodePlace(`${primaryHotel.name}, ${intent.destination}`);
+
       return {
         name: primaryHotel.name,
-        address: intent.destination,
+        address: validatedPlace.formattedAddress || intent.destination,
         price: pricePerNight,
         rating: '4.0',
-        coordinate: FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
+        coordinate:
+          validatedPlace.coordinate ||
+          FALLBACK_COORDINATES[intent.destination] ||
+          DEFAULT_COORDINATE,
+        placeId: validatedPlace.placeId,
+        isPlaceValidated: validatedPlace.isValidated,
       };
     }
   }
@@ -140,29 +159,44 @@ export async function determineHotel(
     if (!content) throw new Error('No content from OpenAI');
 
     const data = JSON.parse(content);
+    const validatedPlace = await geocodePlace(`${data.name}, ${intent.destination}`);
+    const coordinate =
+      validatedPlace.coordinate ||
+      data.coordinate ||
+      FALLBACK_COORDINATES[intent.destination] ||
+      DEFAULT_COORDINATE;
+    const address = validatedPlace.formattedAddress || data.address || intent.destination;
+
     console.log(
       `✅ [3-Hotel] 추천: ${data.name} (1박 ${data.price?.toLocaleString()}원, ⭐${data.rating})`
     );
 
     return {
       name: data.name,
-      address: data.address,
+      address,
       price: data.price,
       rating: data.rating,
-      coordinate: data.coordinate || FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
+      coordinate,
+      placeId: validatedPlace.placeId,
+      isPlaceValidated: validatedPlace.isValidated,
     };
   } catch (error) {
     console.error('❌ [3-Hotel] Error:', error);
     // 폴백
     const fallbackPrice =
       intent.budgetLevel === 'LOW' ? 100000 : intent.budgetLevel === 'HIGH' ? 400000 : 200000;
+    const fallbackName = `${intent.destination} 시티 호텔`;
+    const validatedPlace = await geocodePlace(`${fallbackName}, ${intent.destination}`);
 
     return {
-      name: `${intent.destination} 시티 호텔`,
-      address: intent.destination,
+      name: fallbackName,
+      address: validatedPlace.formattedAddress || intent.destination,
       price: fallbackPrice,
-      coordinate: FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
+      coordinate:
+        validatedPlace.coordinate || FALLBACK_COORDINATES[intent.destination] || DEFAULT_COORDINATE,
       rating: '4.0',
+      placeId: validatedPlace.placeId,
+      isPlaceValidated: validatedPlace.isValidated,
     };
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plane, Banknote, Check, ChevronDown, Calendar, Clock } from 'lucide-react';
+import { Plane, Banknote, Check, ChevronDown } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import { ORIGIN_AIRPORTS, ARRIVAL_AIRPORTS } from '@/constants/airports';
 import { formatKoreanCurrency } from '@/lib/utils/format';

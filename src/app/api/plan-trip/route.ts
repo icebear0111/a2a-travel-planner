@@ -4,6 +4,7 @@ import { determineFlightConstraints } from '@/lib/agents/flight';
 import { determineHotel } from '@/lib/agents/hotel';
 import { generateItinerary } from '@/lib/agents/route';
 import { verifyBudget } from '@/lib/agents/budget';
+import { validateItineraryLocations } from '@/lib/utils/googleMaps';
 
 // TripStore에 정의된 UserInput과 동일한 구조라고 가정 (타입 import 또는 any 사용)
 // 여기서는 런타임에 userRequest가 넘어오므로 흐름만 제어하면 됩니다.
@@ -102,6 +103,7 @@ export async function POST(req: Request) {
           undefined, // suggestion
           userRequest.mustVisitPlaces
         );
+        itinerary = await validateItineraryLocations(itinerary, intent.destination);
 
         sendEvent({
           type: 'progress',
@@ -137,6 +139,7 @@ export async function POST(req: Request) {
               budgetCheck.suggestion,
               userRequest.mustVisitPlaces
             );
+            itinerary = await validateItineraryLocations(itinerary, intent.destination);
           }
           // (Hotel 변경 제안은 사용자가 직접 입력한 경우 무시해야 하므로 여기선 Route만 재조정)
 

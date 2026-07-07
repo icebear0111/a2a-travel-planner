@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import { Activity } from '@/types/trip';
+import { buildDayMapUrls } from '@/lib/utils/mapUrls';
 import {
   TravelSegmentQuality,
   calculateRouteQuality,
@@ -308,61 +309,19 @@ export default function MapTab() {
           ? `${routeQuality.estimatedSegments}/${routeQuality.totalSegments} 추정`
           : `${routeQuality.knownSegments}/${routeQuality.totalSegments}`;
 
-  // 구글 맵 URL 생성
-  const mapUrls = useMemo(() => {
-    if (!currentSchedule || currentSchedule.activities.length === 0 || !userInput.destination) {
-      return { embed: '', external: '' };
-    }
-
-    const formatPlace = (input: { title: string; location?: string; address?: string } | string) => {
-      let placeName = '';
-      let contextLocation = userInput.destination;
-
-      if (typeof input === 'string') {
-        placeName = input;
-      } else {
-        if (input.address) return input.address;
-        placeName = input.title;
-        if (input.location) contextLocation = input.location;
-      }
-
-      if (!placeName) return contextLocation;
-      if (placeName.includes(contextLocation)) return placeName;
-      return `${placeName}, ${contextLocation}`;
-    };
-
-    // 특정 장소 선택 모드
-    if (focusedActivityId) {
-      const activity = currentSchedule.activities.find((a) => a.id === focusedActivityId);
-      if (activity) {
-        const query = encodeURIComponent(formatPlace(activity));
-        return {
-          embed: `https://www.google.com/maps/embed/v1/search?key=${GOOGLE_API_KEY}&q=${query}&zoom=15`,
-          external: `https://www.google.com/maps/search/?api=1&query=${query}`,
-        };
-      }
-    }
-
-    // 전체 경로 모드
-    const firstActivity = currentSchedule.activities[0];
-    const origin = encodeURIComponent(formatPlace(firstActivity));
-
-    const lastActivity = currentSchedule.activities[currentSchedule.activities.length - 1];
-    const destination = encodeURIComponent(formatPlace(lastActivity));
-
-    const waypoints = currentSchedule.activities
-      .slice(1, currentSchedule.activities.length - 1)
-      .map((item) => formatPlace(item))
-      .join('|');
-
-    const encWaypoints = encodeURIComponent(waypoints);
-    const mode = 'transit';
-
-    return {
-      embed: `https://www.google.com/maps/embed/v1/directions?key=${GOOGLE_API_KEY}&origin=${origin}&destination=${destination}&waypoints=${encWaypoints}&mode=${mode}`,
-      external: `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${encWaypoints}&travelmode=${mode}`,
-    };
-  }, [currentSchedule, userInput.destination, focusedActivityId]);
+  // 구글 맵 URL 생성 (검증된 placeId 우선, 비장소 활동 제외 — lib/utils/mapUrls.ts)
+  const mapUrls = useMemo(
+    () =>
+      currentSchedule
+        ? buildDayMapUrls({
+            activities: currentSchedule.activities,
+            destination: userInput.destination,
+            focusedActivityId,
+            apiKey: GOOGLE_API_KEY,
+          })
+        : { embed: '', external: '' },
+    [currentSchedule, userInput.destination, focusedActivityId]
+  );
 
   const handleActivitySelect = (activityId: string) => {
     setMapState((state) => {

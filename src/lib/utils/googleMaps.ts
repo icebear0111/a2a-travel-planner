@@ -80,6 +80,19 @@ function writeCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T)
 const getGoogleMapsKey = () =>
   process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || '';
 
+// REQUEST_DENIED(키 권한 없음) 같은 설정 오류는 조용히 실패하면 원인 파악이 어려우므로
+// 상태 코드별로 한 번씩만 경고를 남긴다.
+const reportedApiStatuses = new Set<string>();
+
+function warnApiStatusOnce(api: string, status: string, errorMessage?: string) {
+  const key = `${api}:${status}`;
+  if (status === 'OK' || status === 'ZERO_RESULTS' || reportedApiStatuses.has(key)) return;
+  reportedApiStatuses.add(key);
+  console.warn(
+    `⚠️ [Google Maps] ${api} 응답 상태 ${status}${errorMessage ? ` — ${errorMessage}` : ''}`
+  );
+}
+
 const shouldValidateActivity = (type: string) =>
   !['flight', 'transport'].includes(type.toLowerCase());
 
@@ -110,11 +123,12 @@ export async function geocodePlace(query: string): Promise<ValidatedPlace> {
       return { query: normalizedQuery, isValidated: false };
     }
 
-    const data = (await response.json()) as GeocodeResponse;
+    const data = (await response.json()) as GeocodeResponse & { error_message?: string };
     const result = data.results?.[0];
     const location = result?.geometry?.location;
 
     if (data.status !== 'OK' || !result || !location) {
+      warnApiStatusOnce('Geocoding', data.status, data.error_message);
       return { query: normalizedQuery, isValidated: false };
     }
 
@@ -166,10 +180,11 @@ async function estimateTravelSegment(origin: string, destination: string) {
       return null;
     }
 
-    const data = (await response.json()) as DirectionsResponse;
+    const data = (await response.json()) as DirectionsResponse & { error_message?: string };
     const leg = data.routes?.[0]?.legs?.[0];
 
     if (data.status !== 'OK' || !leg?.duration || !leg?.distance) {
+      warnApiStatusOnce('Directions', data.status, data.error_message);
       return null;
     }
 

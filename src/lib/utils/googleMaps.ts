@@ -42,6 +42,41 @@ interface DirectionsResponse {
   }[];
 }
 
+interface TravelSegment {
+  travelTimeToNext: string;
+  travelDistanceToNext: string;
+  travelMinutesToNext: number;
+  travelMetersToNext: number;
+}
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+const MAP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAP_CACHE_MAX_ENTRIES = 500;
+const geocodeCache = new Map<string, CacheEntry<ValidatedPlace>>();
+const directionsCache = new Map<string, CacheEntry<TravelSegment>>();
+
+function readCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | undefined {
+  const entry = cache.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function writeCache<T>(cache: Map<string, CacheEntry<T>>, key: string, value: T) {
+  if (cache.size >= MAP_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
+  cache.set(key, { value, expiresAt: Date.now() + MAP_CACHE_TTL_MS });
+}
+
 const getGoogleMapsKey = () =>
   process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || '';
 
@@ -51,6 +86,12 @@ const shouldValidateActivity = (type: string) =>
 export async function geocodePlace(query: string): Promise<ValidatedPlace> {
   const normalizedQuery = query.trim();
   const apiKey = getGoogleMapsKey();
+  const cacheKey = normalizedQuery.toLocaleLowerCase();
+  const cachedPlace = readCache(geocodeCache, cacheKey);
+
+  if (cachedPlace) {
+    return cachedPlace;
+  }
 
   if (!normalizedQuery || !apiKey) {
     return { query: normalizedQuery, isValidated: false };
@@ -77,7 +118,7 @@ export async function geocodePlace(query: string): Promise<ValidatedPlace> {
       return { query: normalizedQuery, isValidated: false };
     }
 
-    return {
+    const place = {
       query: normalizedQuery,
       isValidated: true,
       formattedAddress: result.formatted_address,
@@ -87,6 +128,8 @@ export async function geocodePlace(query: string): Promise<ValidatedPlace> {
         lng: location.lng,
       },
     };
+    writeCache(geocodeCache, cacheKey, place);
+    return place;
   } catch (error) {
     console.error('Google Maps geocode failed:', error);
     return { query: normalizedQuery, isValidated: false };
@@ -95,6 +138,14 @@ export async function geocodePlace(query: string): Promise<ValidatedPlace> {
 
 async function estimateTravelSegment(origin: string, destination: string) {
   const apiKey = getGoogleMapsKey();
+  const cacheKey = `${origin.trim().toLocaleLowerCase()}→${destination
+    .trim()
+    .toLocaleLowerCase()}`;
+  const cachedSegment = readCache(directionsCache, cacheKey);
+
+  if (cachedSegment) {
+    return cachedSegment;
+  }
 
   if (!origin || !destination || !apiKey) {
     return null;
@@ -122,12 +173,14 @@ async function estimateTravelSegment(origin: string, destination: string) {
       return null;
     }
 
-    return {
+    const segment = {
       travelTimeToNext: leg.duration.text,
       travelDistanceToNext: leg.distance.text,
       travelMinutesToNext: Math.round(leg.duration.value / 60),
       travelMetersToNext: leg.distance.value,
     };
+    writeCache(directionsCache, cacheKey, segment);
+    return segment;
   } catch (error) {
     console.error('Google Maps directions failed:', error);
     return null;

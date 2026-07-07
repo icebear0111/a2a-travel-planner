@@ -76,6 +76,8 @@ export async function determineHotel(
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-5.4-mini',
+      // 단순 정보 조회라 추론을 생략해 응답 속도를 우선한다.
+      reasoning_effort: 'none',
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -115,6 +117,10 @@ export async function determineHotel(
     if (!content) throw new Error('No content from OpenAI');
 
     const data = JSON.parse(content);
+    // AI가 price를 누락하거나 숫자가 아닌 값으로 반환하면 NaN이 예산 계산에 전파되어
+    // 항상 FAIL → 불필요한 일정 재생성이 발생하므로 반드시 숫자로 보정한다.
+    const pricePerNight =
+      Number.isFinite(Number(data.price)) && Number(data.price) > 0 ? Number(data.price) : 200000;
     const validatedPlace = await geocodePlace(`${data.name}, ${intent.destination}`);
     const coordinate =
       validatedPlace.coordinate ||
@@ -130,8 +136,8 @@ export async function determineHotel(
     return {
       name: data.name,
       address,
-      price: data.price,
-      rating: data.rating,
+      price: pricePerNight,
+      rating: data.rating || '4.0',
       coordinate,
       placeId: validatedPlace.placeId,
       isPlaceValidated: validatedPlace.isValidated,

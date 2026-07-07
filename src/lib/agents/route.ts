@@ -138,6 +138,9 @@ Use this as context, but return a freshly optimized full-day itinerary for Day $
 
   const response = await openai.chat.completions.create({
     model: 'gpt-5.4-mini',
+    // 일정 생성은 추론보다 생성 위주 작업이라 추론을 생략해 지연시간을 최소화한다.
+    // (gpt-5.4-mini 실측: low는 추론 토큰이 추가되어 오히려 2~3초 느려짐)
+    reasoning_effort: 'none',
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -260,6 +263,7 @@ export async function generateActivityReplacement(
 
   const response = await openai.chat.completions.create({
     model: 'gpt-5.4-mini',
+    reasoning_effort: 'none',
     response_format: { type: 'json_object' },
     messages: [
       {

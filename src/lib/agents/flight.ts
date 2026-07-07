@@ -68,6 +68,8 @@ export async function determineFlightConstraints(
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-5.4-mini',
+      // 단순 정보 조회라 추론을 생략해 응답 속도를 우선한다.
+      reasoning_effort: 'none',
       response_format: { type: 'json_object' },
       messages: [
         {

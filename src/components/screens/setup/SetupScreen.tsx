@@ -412,6 +412,29 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
   const currentStepIndex = STEPS.indexOf(currentStep);
   const stepInfo = STEP_INFO[currentStep];
   const isLastStep = currentStepIndex === STEPS.length - 1;
+  const isFlightComplete =
+    isFlightUndecided ||
+    Boolean(
+      userInput.flight.originAirportCode &&
+        userInput.flight.destAirportCode &&
+        userInput.flight.departureTime &&
+        userInput.flight.returnTime
+    );
+  const isHotelComplete =
+    isHotelUndecided ||
+    (userInput.hotels.length > 0 &&
+      userInput.hotels.every(
+        (hotel) => hotel.name.trim() && hotel.checkIn && hotel.checkOut
+      ));
+  const isCurrentStepComplete =
+    currentStep === 'dates'
+      ? Boolean(departureDate && returnDate && duration >= 1)
+      : currentStep === 'flight'
+        ? isFlightComplete
+        : currentStep === 'hotel'
+          ? isHotelComplete
+          : true;
+  const isNextDisabled = isAnimating || !isCurrentStepComplete;
 
   // 애니메이션
   const transitionToStep = (nextStep: Step) => {
@@ -441,6 +464,11 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
     }
 
     if (currentStep === 'flight') {
+      if (!isFlightComplete) {
+        alert('출발·도착 공항과 항공편 시간을 입력하거나 “아직 예약 안 함”을 선택해주세요.');
+        return;
+      }
+
       if (isFlightUndecided) {
         setFlightInput({
           originAirportCode: '',
@@ -453,8 +481,13 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
     }
 
     if (currentStep === 'hotel') {
+      if (!isHotelComplete) {
+        alert('숙소 이름과 체크인·체크아웃 날짜를 입력하거나 “예약 안 함”을 선택해주세요.');
+        return;
+      }
+
       if (isHotelUndecided) {
-        setUserInput({ ...userInput, hotels: [] });
+        setUserInput({ hotels: [] });
       }
     }
 
@@ -776,13 +809,9 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
 
           <button
             onClick={goNext}
-            disabled={
-              isAnimating ||
-              (currentStep === 'dates' && (!departureDate || !returnDate || duration < 1))
-            }
+            disabled={isNextDisabled}
             className={`flex items-center gap-3 px-8 py-4 rounded-full font-bold text-lg shadow-xl shadow-black/20 transition-all duration-300 active:scale-95 hover:shadow-2xl hover:-translate-y-1 ${
-              isAnimating ||
-              (currentStep === 'dates' && (!departureDate || !returnDate || duration < 1))
+              isNextDisabled
                 ? 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-none'
                 : 'bg-black text-white'
             }`}

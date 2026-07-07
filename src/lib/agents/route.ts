@@ -137,7 +137,7 @@ Use this as context, but return a freshly optimized full-day itinerary for Day $
     : '';
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini',
+    model: 'gpt-5.4-mini',
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -259,7 +259,7 @@ export async function generateActivityReplacement(
   const stylePrompt = formatTravelStyleForPrompt(intent);
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini',
+    model: 'gpt-5.4-mini',
     response_format: { type: 'json_object' },
     messages: [
       {

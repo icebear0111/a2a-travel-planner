@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import { Intent, UserInput } from './intent';
-import { FlightContext } from './flight';
 import { geocodePlace } from '@/lib/utils/googleMaps';
 
 export interface HotelContext {
@@ -35,7 +34,6 @@ const DEFAULT_COORDINATE = { lat: 35.6762, lng: 139.6503 };
 
 export async function determineHotel(
   intent: Intent,
-  flight: FlightContext,
   input: UserInput
 ): Promise<HotelContext> {
   console.log(`🏨 [3-Hotel] ${intent.destination} 숙소 분석 중...`);
@@ -53,65 +51,23 @@ export async function determineHotel(
     const nights = Math.max(1, intent.duration - 1);
     const pricePerNight = Math.round(primaryHotel.price / nights);
 
-    try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-5-nano',
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: `호텔 위치 검색 전문가입니다. 해당 호텔의 실제 주소와 좌표를 찾아주세요.
+    const validatedPlace = await geocodePlace(`${primaryHotel.name}, ${intent.destination}`);
+    const address = validatedPlace.formattedAddress || intent.destination;
 
-## 출력 (JSON)
-{"address":"실제 주소","coordinate":{"lat":number,"lng":number},"rating":"평점 (예: 4.5)"}`,
-          },
-          {
-            role: 'user',
-            content: `호텔: "${primaryHotel.name}", 도시: ${intent.destination}`,
-          },
-        ],
-      });
+    console.log(`✅ [3-Hotel] 사용자 숙소 위치 확인: ${address}`);
 
-      const content = response.choices[0].message.content;
-      if (!content) throw new Error('No content');
-      const data = JSON.parse(content);
-
-      const validatedPlace = await geocodePlace(`${primaryHotel.name}, ${intent.destination}`);
-      const coordinate =
+    return {
+      name: primaryHotel.name,
+      address,
+      price: pricePerNight,
+      rating: '4.0',
+      coordinate:
         validatedPlace.coordinate ||
-        data.coordinate ||
         FALLBACK_COORDINATES[intent.destination] ||
-        DEFAULT_COORDINATE;
-      const address = validatedPlace.formattedAddress || data.address || intent.destination;
-
-      console.log(`✅ [3-Hotel] 위치 확인: ${address}`);
-
-      return {
-        name: primaryHotel.name,
-        address,
-        price: pricePerNight,
-        rating: data.rating || '4.0',
-        coordinate,
-        placeId: validatedPlace.placeId,
-        isPlaceValidated: validatedPlace.isValidated,
-      };
-    } catch (error) {
-      console.error('❌ [3-Hotel] 위치 검색 실패:', error);
-      const validatedPlace = await geocodePlace(`${primaryHotel.name}, ${intent.destination}`);
-
-      return {
-        name: primaryHotel.name,
-        address: validatedPlace.formattedAddress || intent.destination,
-        price: pricePerNight,
-        rating: '4.0',
-        coordinate:
-          validatedPlace.coordinate ||
-          FALLBACK_COORDINATES[intent.destination] ||
-          DEFAULT_COORDINATE,
-        placeId: validatedPlace.placeId,
-        isPlaceValidated: validatedPlace.isValidated,
-      };
-    }
+        DEFAULT_COORDINATE,
+      placeId: validatedPlace.placeId,
+      isPlaceValidated: validatedPlace.isValidated,
+    };
   }
 
   // ============================================

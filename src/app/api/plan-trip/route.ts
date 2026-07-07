@@ -12,9 +12,19 @@ import { validateItineraryLocations } from '@/lib/utils/googleMaps';
 type StreamPayload =
   | { type: 'progress'; stepIndex: number; status: 'running' | 'complete'; message: string }
   | { type: 'result'; data: Record<string, unknown> }
+  | { type: 'enrichment'; data: { destination: string; itinerary: unknown[] } }
   | { type: 'error'; message: string };
 
 const encoder = new TextEncoder();
+
+async function measureStage<T>(name: string, task: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    return await task();
+  } finally {
+    console.log(`⏱️ [Pipeline] ${name}: ${Date.now() - startedAt}ms`);
+  }
+}
 
 export async function POST(req: Request) {
   // 1. 사용자 요청 받기 (이제 userRequest는 단순 문자열이 아니라 UserInput 객체입니다)
@@ -22,6 +32,7 @@ export async function POST(req: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      const pipelineStartedAt = Date.now();
       const sendEvent = (data: StreamPayload) => {
         const text = `data: ${JSON.stringify(data)}\n\n`;
         controller.enqueue(encoder.encode(text));
@@ -32,7 +43,7 @@ export async function POST(req: Request) {
         // 1단계. Intent (취향 분석)
         // ==========================================
         // 👇 [수정] userRequest 객체 전체를 넘깁니다.
-        const intent = await analyzeIntent(userRequest);
+        const intent = await measureStage('intent', () => analyzeIntent(userRequest));
 
         sendEvent({
           type: 'progress',
@@ -41,29 +52,13 @@ export async function POST(req: Request) {
           message: '여행 취향 분석 완료',
         });
 
-        // ==========================================
-        // 2단계. Flight (항공권/교통)
-        // ==========================================
+        // Flight와 Hotel은 Intent만 준비되면 서로 독립적으로 실행할 수 있다.
         sendEvent({
           type: 'progress',
           stepIndex: 1,
           status: 'running',
           message: '교통편 일정 확인 중...',
         });
-
-        // 👇 [수정] intent와 함께 userRequest(입력된 항공 정보)를 넘깁니다.
-        const flightContext = await determineFlightConstraints(intent, userRequest);
-
-        sendEvent({
-          type: 'progress',
-          stepIndex: 1,
-          status: 'complete',
-          message: '교통편 데이터 확보',
-        });
-
-        // ==========================================
-        // 3단계. Hotel (숙소)
-        // ==========================================
         sendEvent({
           type: 'progress',
           stepIndex: 2,
@@ -71,15 +66,28 @@ export async function POST(req: Request) {
           message: '숙소 정보 확인 중...',
         });
 
-        // 👇 [수정] flightContext와 userRequest(입력된 숙소 리스트)를 넘깁니다.
-        const hotelContext = await determineHotel(intent, flightContext, userRequest);
-
-        sendEvent({
-          type: 'progress',
-          stepIndex: 2,
-          status: 'complete',
-          message: '숙소 거점 확보',
-        });
+        const [flightContext, hotelContext] = await Promise.all([
+          measureStage('flight', () => determineFlightConstraints(intent, userRequest)).then(
+            (result) => {
+              sendEvent({
+                type: 'progress',
+                stepIndex: 1,
+                status: 'complete',
+                message: '교통편 데이터 확보',
+              });
+              return result;
+            }
+          ),
+          measureStage('hotel', () => determineHotel(intent, userRequest)).then((result) => {
+            sendEvent({
+              type: 'progress',
+              stepIndex: 2,
+              status: 'complete',
+              message: '숙소 거점 확보',
+            });
+            return result;
+          }),
+        ]);
 
         // ==========================================
         // 4단계. Route (일정)
@@ -96,25 +104,16 @@ export async function POST(req: Request) {
 
         // Route 에이전트는 기존 Context들을 활용하여 동선을 짭니다.
         // mustVisitPlaces가 있으면 함께 전달하여 일정에 반영
-        let itinerary = await generateItinerary(
-          intent,
-          flightContext,
-          hotelContext,
-          undefined, // suggestion
-          userRequest.mustVisitPlaces
+        let itinerary = await measureStage('route', () =>
+          generateItinerary(
+            intent,
+            flightContext,
+            hotelContext,
+            undefined,
+            userRequest.mustVisitPlaces
+          )
         );
-        itinerary = await validateItineraryLocations(itinerary, intent.destination);
 
-        sendEvent({
-          type: 'progress',
-          stepIndex: 3,
-          status: 'complete',
-          message: '맞춤 일정 생성 완료',
-        });
-
-        // ==========================================
-        // 5단계. Budget (예산)
-        // ==========================================
         sendEvent({
           type: 'progress',
           stepIndex: 4,
@@ -122,7 +121,9 @@ export async function POST(req: Request) {
           message: '예산 검토 중...',
         });
 
-        let budgetCheck = await verifyBudget(intent, flightContext, hotelContext, itinerary);
+        let budgetCheck = await measureStage('budget', () =>
+          verifyBudget(intent, flightContext, hotelContext, itinerary)
+        );
 
         // 🔁 예산 초과 시 재시도 로직
         let retryCount = 0;
@@ -132,20 +133,28 @@ export async function POST(req: Request) {
           console.log(`⚠️ 예산 초과! 조정 시도 ${retryCount + 1}`);
 
           if (budgetCheck.suggestion?.target === 'ROUTE') {
-            itinerary = await generateItinerary(
-              intent,
-              flightContext,
-              hotelContext,
-              budgetCheck.suggestion,
-              userRequest.mustVisitPlaces
+            itinerary = await measureStage('route-retry', () =>
+              generateItinerary(
+                intent,
+                flightContext,
+                hotelContext,
+                budgetCheck.suggestion,
+                userRequest.mustVisitPlaces
+              )
             );
-            itinerary = await validateItineraryLocations(itinerary, intent.destination);
           }
           // (Hotel 변경 제안은 사용자가 직접 입력한 경우 무시해야 하므로 여기선 Route만 재조정)
 
           budgetCheck = await verifyBudget(intent, flightContext, hotelContext, itinerary);
           retryCount++;
         }
+
+        sendEvent({
+          type: 'progress',
+          stepIndex: 3,
+          status: 'complete',
+          message: '맞춤 일정 생성 완료',
+        });
 
         sendEvent({
           type: 'progress',
@@ -166,6 +175,22 @@ export async function POST(req: Request) {
         };
 
         sendEvent({ type: 'result', data: finalResult as unknown as Record<string, unknown> });
+        console.log(`⏱️ [Pipeline] initial-result: ${Date.now() - pipelineStartedAt}ms`);
+
+        // 좌표와 이동시간은 초기 결과를 막지 않고 후속 이벤트로 보강한다.
+        try {
+          const enrichedItinerary = await measureStage('maps', () =>
+            validateItineraryLocations(itinerary, intent.destination)
+          );
+          sendEvent({
+            type: 'enrichment',
+            data: { destination: intent.destination, itinerary: enrichedItinerary },
+          });
+        } catch (error) {
+          console.error('Map enrichment failed:', error);
+        }
+
+        console.log(`⏱️ [Pipeline] total: ${Date.now() - pipelineStartedAt}ms`);
       } catch (error: unknown) {
         console.error('Pipeline Error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';

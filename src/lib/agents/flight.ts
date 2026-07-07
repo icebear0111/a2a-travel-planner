@@ -46,56 +46,25 @@ export async function determineFlightConstraints(
   const takeoffTime = userFlight.departureTime || '10:00';
   const returnTakeoffTime = userFlight.returnTime || '18:00';
 
-  // Case A: 사용자가 가격을 입력한 경우 (확정) - AI로 비행시간만 추정
-  if (userFlight.price > 0) {
-    try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-5-nano',
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: `항공편 정보 분석가입니다. 비행시간과 항공사를 추정해주세요.
+  const knownRoute = FALLBACK_ROUTES[intent.destination];
 
-## 출력 (JSON)
-{"flightDuration":"Xh Ym 형식","airline":"항공사명"}`,
-          },
-          {
-            role: 'user',
-            content: `${userFlight.originAirportCode || 'ICN'} → ${
-              userFlight.destAirportCode || intent.destination
-            }`,
-          },
-        ],
-      });
+  // 로컬에 있는 대표 노선은 사용자가 입력한 가격을 유지하며 AI 호출 없이 구성한다.
+  if (knownRoute) {
+    const route = knownRoute;
+    console.log(`✅ [2-Flight] 로컬 노선 정보 사용: ${userFlight.destAirportCode || route.code}`);
 
-      const content = response.choices[0].message.content;
-      const data = content ? JSON.parse(content) : {};
-
-      return {
-        departureTime: takeoffTime,
-        returnTime: returnTakeoffTime,
-        price: userFlight.price,
-        originAirportCode: userFlight.originAirportCode || 'ICN',
-        destAirportCode: userFlight.destAirportCode || data.destAirportCode || 'NRT',
-        airline: data.airline || '항공사',
-        flightDuration: data.flightDuration || '2h 00m',
-      };
-    } catch {
-      const fallback = FALLBACK_ROUTES[intent.destination] || DEFAULT_FLIGHT;
-      return {
-        departureTime: takeoffTime,
-        returnTime: returnTakeoffTime,
-        price: userFlight.price,
-        originAirportCode: userFlight.originAirportCode || 'ICN',
-        destAirportCode: userFlight.destAirportCode || fallback.code,
-        airline: fallback.airline,
-        flightDuration: fallback.duration,
-      };
-    }
+    return {
+      departureTime: takeoffTime,
+      returnTime: returnTakeoffTime,
+      price: userFlight.price || route.price,
+      originAirportCode: userFlight.originAirportCode || 'ICN',
+      destAirportCode: userFlight.destAirportCode || route.code,
+      airline: route.airline,
+      flightDuration: route.duration,
+    };
   }
 
-  // Case B: AI 전체 추정
+  // 로컬에 없는 목적지만 AI로 노선 정보를 보완한다.
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-5-nano',

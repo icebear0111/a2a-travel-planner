@@ -94,4 +94,5 @@ export interface ApiResultData {
 export type StreamPayload =
   | { type: 'progress'; stepIndex: number; status: 'running' | 'complete'; message: string }
   | { type: 'result'; data: ApiResultData }
+  | { type: 'enrichment'; data: { destination: string; itinerary: ApiDayItem[] } }
   | { type: 'error'; message: string };

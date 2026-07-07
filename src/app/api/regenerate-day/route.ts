@@ -47,8 +47,10 @@ export async function POST(req: Request) {
       ...intent,
       duration: Math.max(totalDays || intent.duration, dayNumber),
     };
-    const flight = await determineFlightConstraints(normalizedIntent, userRequest);
-    const hotel = await determineHotel(normalizedIntent, flight, userRequest);
+    const [flight, hotel] = await Promise.all([
+      determineFlightConstraints(normalizedIntent, userRequest),
+      determineHotel(normalizedIntent, userRequest),
+    ]);
 
     if (mode === 'replace-activity') {
       if (!currentDay || !targetActivity) {

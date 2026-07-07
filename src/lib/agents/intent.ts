@@ -1,16 +1,10 @@
-import OpenAI from 'openai';
 import { UserInput, Intent } from '@/types/trip';
-import { formatTravelStyleForPrompt } from '@/lib/utils/travelStyle';
 
 // 타입 재내보내기 (다른 에이전트에서 사용)
 export type { UserInput, Intent };
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 // ============================================
-// 폴백용 테마 (AI 실패 시에만 사용)
+// 목적지별 기본 테마
 // ============================================
 const FALLBACK_THEMES: Record<string, string[]> = {
   도쿄: ['맛집', '쇼핑', '핫플'],
@@ -25,14 +19,39 @@ const FALLBACK_THEMES: Record<string, string[]> = {
 
 const DEFAULT_THEMES = ['맛집', '핫플', '쇼핑'];
 
+const DESTINATION_ALIASES: Record<string, string> = {
+  tokyo: '도쿄',
+  osaka: '오사카',
+  kyoto: '교토',
+  fukuoka: '후쿠오카',
+  sapporo: '삿포로',
+  bangkok: '방콕',
+  bali: '발리',
+  danang: '다낭',
+  'da nang': '다낭',
+  paris: '파리',
+  london: '런던',
+};
+
+const STYLE_THEMES: Record<string, string> = {
+  budget: '가성비',
+  relaxed: '힐링',
+  packed: '핵심 명소',
+  food: '맛집',
+  culture: '문화·역사',
+  nature: '자연',
+  shopping: '쇼핑',
+};
+
+const HIGH_BUDGET_DESTINATIONS = new Set(['파리', '런던']);
+
 const isValidDuration = (duration: unknown): duration is number =>
   typeof duration === 'number' && Number.isFinite(duration) && duration >= 1;
 
 export async function analyzeIntent(input: UserInput): Promise<Intent> {
   console.log(`🔍 [1-Intent] 사용자 의도 분석 중... 목적지: ${input.destination}`);
-  const stylePrompt = formatTravelStyleForPrompt(input);
 
-  // 1️⃣ 기간(Duration) 계산
+  // 입력 폼에서 이미 구조화된 값은 다시 AI로 해석하지 않는다.
   let duration = isValidDuration(input.duration) ? input.duration : 3;
   let startDate = new Date().toISOString().split('T')[0];
 
@@ -46,7 +65,9 @@ export async function analyzeIntent(input: UserInput): Promise<Intent> {
     console.log(`⚠️ [1-Intent] 날짜 미정: 입력된 기간 또는 기본값 ${duration}일로 설정`);
   }
 
-  // 계절 파악
+  const rawDestination = input.destination.trim();
+  const destination = DESTINATION_ALIASES[rawDestination.toLowerCase()] || rawDestination;
+
   const month = new Date(startDate).getMonth() + 1;
   const season =
     month >= 3 && month <= 5
@@ -57,96 +78,32 @@ export async function analyzeIntent(input: UserInput): Promise<Intent> {
       ? '가을'
       : '겨울';
 
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-5-nano',
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `당신은 여행 의도 분석 전문가입니다.
+  const fallbackThemes = FALLBACK_THEMES[destination] || DEFAULT_THEMES;
+  const preferredThemes = [input.travelStyle, ...(input.travelKeywords || [])]
+    .map((style) => (style ? STYLE_THEMES[style] : undefined))
+    .filter((theme): theme is string => Boolean(theme));
+  const themes = [...new Set([...preferredThemes, `${season} 여행`, ...fallbackThemes])].slice(0, 3);
 
-## 분석 규칙
-1. **destination**: 한국어 도시명으로 정규화 (Tokyo → 도쿄)
-2. **companion**: 맥락에서 추론 (기본: "친구")
-   - 허니문/로맨틱 → "커플"
-   - 아이/가족 → "가족"
-   - 혼자/솔로 → "혼자"
-3. **budgetLevel**: 목적지와 기간으로 추론
-   - 동남아 단기 → LOW~MEDIUM
-   - 일본/대만 → MEDIUM
-   - 유럽/미주 → HIGH
-4. **themes**: 3개의 맞춤 테마 키워드 추천
-   - 해당 도시의 특성과 매력 반영
-   - 계절감 반영 (현재: ${season}, ${month}월)
-   - 사용자가 선택한 여행 컨셉을 최우선 반영
-
-## 출력 형식 (JSON)
-{"destination":"string","companion":"string","budgetLevel":"LOW"|"MEDIUM"|"HIGH","themes":["string","string","string"]}`,
-        },
-        {
-          role: 'user',
-          content: `목적지: "${input.destination}"
-출발일: ${startDate} (${duration}일간)
-출발지: ${input.flight.originAirportCode || '미정'}
-
-${stylePrompt}`,
-        },
-      ],
-    });
-
-    const content = response.choices[0].message.content;
-    if (!content) throw new Error('No content from OpenAI');
-
-    const aiResult = JSON.parse(content);
-    console.log(
-      `✅ [1-Intent] 분석 완료: ${aiResult.destination} (테마: ${aiResult.themes?.join(', ')})`
-    );
-
-    const budgetLevel =
-      input.budgetPreference === 'budget'
-        ? 'LOW'
-        : input.budgetPreference === 'premium'
-        ? 'HIGH'
-        : aiResult.budgetLevel || 'MEDIUM';
-
-    return {
-      destination: aiResult.destination || input.destination,
-      startDate: startDate,
-      duration: duration,
-      companion: aiResult.companion || '친구',
-      budgetLevel,
-      themes: aiResult.themes || DEFAULT_THEMES,
-      travelStyle: input.travelStyle,
-      travelKeywords: input.travelKeywords || [],
-      pace: input.pace || 'balanced',
-      budgetPreference: input.budgetPreference || 'balanced',
-      transportPreference: input.transportPreference || 'flexible',
-    };
-  } catch (error) {
-    console.error('❌ [1-Intent] Error:', error);
-    // 폴백: 로컬 데이터 사용
-    const fallbackThemes = FALLBACK_THEMES[input.destination] || DEFAULT_THEMES;
-
-    const fallbackBudgetLevel =
-      input.budgetPreference === 'budget'
-        ? 'LOW'
-        : input.budgetPreference === 'premium'
+  const budgetLevel: Intent['budgetLevel'] =
+    input.budgetPreference === 'budget'
+      ? 'LOW'
+      : input.budgetPreference === 'premium' || HIGH_BUDGET_DESTINATIONS.has(destination)
         ? 'HIGH'
         : 'MEDIUM';
 
-    return {
-      destination: input.destination,
-      startDate: startDate,
-      duration: duration,
-      companion: '친구',
-      budgetLevel: fallbackBudgetLevel,
-      themes: fallbackThemes,
-      travelStyle: input.travelStyle,
-      travelKeywords: input.travelKeywords || [],
-      pace: input.pace || 'balanced',
-      budgetPreference: input.budgetPreference || 'balanced',
-      transportPreference: input.transportPreference || 'flexible',
-    };
-  }
+  console.log(`✅ [1-Intent] 로컬 분석 완료: ${destination} (테마: ${themes.join(', ')})`);
+
+  return {
+    destination,
+    startDate,
+    duration,
+    companion: '친구',
+    budgetLevel,
+    themes,
+    travelStyle: input.travelStyle,
+    travelKeywords: input.travelKeywords || [],
+    pace: input.pace || 'balanced',
+    budgetPreference: input.budgetPreference || 'balanced',
+    transportPreference: input.transportPreference || 'flexible',
+  };
 }

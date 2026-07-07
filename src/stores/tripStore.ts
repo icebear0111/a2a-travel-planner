@@ -12,7 +12,7 @@ import {
   ActivityType,
 } from '@/types/trip';
 import { ApiActivity, ApiDayItem, StreamPayload } from '@/types/api';
-import { fetchUnsplashImage } from '@/lib/utils/unsplash';
+import { DEFAULT_TRAVEL_IMAGE, fetchUnsplashImage } from '@/lib/utils/unsplash';
 import {
   safeCastActivityType,
   mapStreamStatusToStoreStatus,
@@ -171,6 +171,33 @@ const mapApiDayToScheduleDay = (
   theme: existingDay?.theme || 'AI 추천 코스',
   activities: dayItem.activities.map((act) => mapApiActivityToScheduleActivity(act, destination)),
 });
+
+const mergeActivityEnrichment = (activity: Activity, enriched?: ApiActivity): Activity => {
+  if (!enriched) return activity;
+
+  return {
+    ...activity,
+    ...(enriched.location !== undefined ? { location: enriched.location } : {}),
+    ...(enriched.address !== undefined ? { address: enriched.address } : {}),
+    ...(enriched.placeId !== undefined ? { placeId: enriched.placeId } : {}),
+    ...(enriched.coordinate !== undefined ? { coordinate: enriched.coordinate } : {}),
+    ...(enriched.isPlaceValidated !== undefined
+      ? { isPlaceValidated: enriched.isPlaceValidated }
+      : {}),
+    ...(enriched.travelTimeToNext !== undefined
+      ? { travelTimeToNext: enriched.travelTimeToNext }
+      : {}),
+    ...(enriched.travelDistanceToNext !== undefined
+      ? { travelDistanceToNext: enriched.travelDistanceToNext }
+      : {}),
+    ...(enriched.travelMinutesToNext !== undefined
+      ? { travelMinutesToNext: enriched.travelMinutesToNext }
+      : {}),
+    ...(enriched.travelMetersToNext !== undefined
+      ? { travelMetersToNext: enriched.travelMetersToNext }
+      : {}),
+  };
+};
 
 const serializeActivityForApi = (activity: Activity) => {
   const cleanActivity = removeActivityIcon(activity);
@@ -442,15 +469,13 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
           const data = parsed.data;
           console.log('✨ 최종 데이터 수신:', data);
 
-          const realImageUrl = await fetchUnsplashImage(data.intent.destination);
-
               // 1) 여행 기본 정보 매핑
               const newTripData = {
                 title: data.intent.destination,
                 subtitle: `${data.intent.duration - 1}박 ${data.intent.duration}일 AI 추천 여행`,
                 dates: data.intent.startDate || '날짜 미정',
                 days: data.intent.duration,
-                image: realImageUrl,
+                image: DEFAULT_TRAVEL_IMAGE,
               };
 
               // 2) 일정 정보 매핑
@@ -545,9 +570,41 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
                 scheduleData: newScheduleData,
                 budgetData: newBudgetData,
                 selectedDay: 1,
+                isGenerating: false,
+              });
+
+              // 대표 이미지는 결과 화면 전환을 막지 않고 백그라운드에서 교체한다.
+              void fetchUnsplashImage(data.intent.destination).then((image) => {
+                set((state) =>
+                  state.tripData.title === data.intent.destination
+                    ? { tripData: { ...state.tripData, image } }
+                    : state
+                );
               });
 
           console.log('🎉 UI 업데이트 완료! 제목:', newTripData.title);
+        } else if (parsed.type === 'enrichment') {
+          set((state) => {
+            if (state.tripData.title !== parsed.data.destination) return state;
+
+            return {
+              scheduleData: state.scheduleData.map((day) => {
+                const enrichedDay = parsed.data.itinerary.find((item) => item.day === day.day);
+                if (!enrichedDay) return day;
+
+                return {
+                  ...day,
+                  activities: day.activities.map((activity) =>
+                    mergeActivityEnrichment(
+                      activity,
+                      enrichedDay.activities.find((item) => item.id === activity.id)
+                    )
+                  ),
+                };
+              }),
+            };
+          });
+          console.log('📍 지도 좌표와 이동시간 보강 완료');
         } else if (parsed.type === 'error') {
           throw new Error(parsed.message);
         }

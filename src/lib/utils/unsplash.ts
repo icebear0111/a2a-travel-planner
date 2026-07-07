@@ -1,6 +1,6 @@
 // Unsplash API를 통해 여행지 이미지 가져오기
 
-const DEFAULT_TRAVEL_IMAGE =
+export const DEFAULT_TRAVEL_IMAGE =
   'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1200&q=80';
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&q=80';
 

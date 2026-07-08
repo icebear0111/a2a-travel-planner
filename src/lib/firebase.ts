@@ -15,6 +15,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   getDoc,
   getDocs,
   updateDoc,
@@ -57,6 +58,7 @@ export async function signUpWithEmail(email: string, password: string, displayNa
   // 사용자 이름 설정
   if (userCredential.user) {
     await updateProfile(userCredential.user, { displayName });
+    await ensureUserDocument(userCredential.user, displayName);
   }
 
   return userCredential.user;
@@ -67,6 +69,7 @@ export async function signUpWithEmail(email: string, password: string, displayNa
  */
 export async function signInWithEmail(email: string, password: string) {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  await ensureUserDocument(userCredential.user);
   return userCredential.user;
 }
 
@@ -75,6 +78,7 @@ export async function signInWithEmail(email: string, password: string) {
  */
 export async function signInWithGoogle() {
   const userCredential = await signInWithPopup(auth, googleProvider);
+  await ensureUserDocument(userCredential.user);
   return userCredential.user;
 }
 
@@ -90,6 +94,37 @@ export async function logOut() {
  */
 export function onAuthChange(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);
+}
+
+/**
+ * Firestore 사용자 프로필 문서 생성/갱신
+ */
+async function ensureUserDocument(user: User, displayName?: string) {
+  const userRef = doc(db, 'users', user.uid);
+  const snapshot = await getDoc(userRef);
+  const now = serverTimestamp();
+  const providerIds = user.providerData.map((provider) => provider.providerId);
+
+  const profileData = {
+    uid: user.uid,
+    email: user.email,
+    displayName: displayName || user.displayName || '',
+    photoURL: user.photoURL || '',
+    providerIds,
+    lastLoginAt: now,
+    updatedAt: now,
+  };
+
+  await setDoc(
+    userRef,
+    snapshot.exists()
+      ? profileData
+      : {
+          ...profileData,
+          createdAt: now,
+        },
+    { merge: true }
+  );
 }
 
 // ============================================

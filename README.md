@@ -245,6 +245,10 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false;
+    }
     match /users/{userId}/trips/{tripId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }

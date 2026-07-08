@@ -18,7 +18,9 @@ Required in `.env.local`:
 
 ```
 OPENAI_API_KEY
-NEXT_PUBLIC_GOOGLE_MAPS_KEY
+NEXT_PUBLIC_GOOGLE_MAPS_KEY       # 브라우저 키 — Maps JavaScript API 전용 (리퍼러 제한)
+GOOGLE_MAPS_API_KEY               # 서버 키 — Geocoding / Directions / Places API (New)
+NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID    # AdvancedMarker용 Map ID (미설정 시 DEMO_MAP_ID)
 NEXT_PUBLIC_UNSPLASH_ACCESS_KEY
 NEXT_PUBLIC_FIREBASE_API_KEY
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
@@ -27,6 +29,8 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 NEXT_PUBLIC_FIREBASE_APP_ID
 ```
+
+Google 키는 역할 분리: `NEXT_PUBLIC_` 키는 브라우저 노출 전제(무료 JS API만), 유료 API는 서버 키에만 부여. 서버 코드(`lib/utils/googleMaps.ts`)는 `GOOGLE_MAPS_API_KEY` 우선, 없으면 `NEXT_PUBLIC_` 폴백.
 
 ## Architecture
 

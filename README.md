@@ -212,8 +212,12 @@ npm install
 # OpenAI
 OPENAI_API_KEY=your_openai_api_key
 
-# Google Maps (Geocoding / Directions)
-NEXT_PUBLIC_GOOGLE_MAPS_KEY=your_google_maps_api_key
+# Google Maps — 브라우저 키 (Maps JavaScript API 전용, HTTP 리퍼러 제한 권장)
+NEXT_PUBLIC_GOOGLE_MAPS_KEY=your_browser_maps_api_key
+# Google Maps — 서버 키 (Geocoding / Directions / Places API (New), 비공개)
+GOOGLE_MAPS_API_KEY=your_server_maps_api_key
+# Google Maps — 콘솔에서 발급한 Map ID (AdvancedMarker용, 미설정 시 DEMO_MAP_ID)
+NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=your_map_id
 
 # Unsplash
 NEXT_PUBLIC_UNSPLASH_ACCESS_KEY=your_unsplash_access_key
@@ -227,7 +231,7 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
-> 💡 Google Maps 키는 서버에서 `GOOGLE_MAPS_API_KEY`(비공개)를 우선 사용하고, 없으면 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`로 폴백합니다.
+> 💡 Google 키는 역할별로 분리합니다 — `NEXT_PUBLIC_` 키는 브라우저에 노출되므로 무료인 Maps JavaScript API만 허용하고, 유료 API(Geocoding·Directions·Places)는 서버 전용 `GOOGLE_MAPS_API_KEY`에만 부여하세요. 서버 코드는 `GOOGLE_MAPS_API_KEY`를 우선 사용하고 없으면 `NEXT_PUBLIC_` 키로 폴백합니다.
 
 ### 3. Firebase 설정
 

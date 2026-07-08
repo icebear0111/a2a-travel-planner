@@ -36,6 +36,10 @@ const PIN_COLORS: Record<string, string> = {
 
 const getPinColor = (type: string) => PIN_COLORS[type] || PIN_COLORS.etc;
 
+// AdvancedMarker에는 Map ID가 필요하다. 콘솔에서 발급한 ID를 env로 주입하고,
+// 없으면 개발용 DEMO_MAP_ID로 동작한다.
+const GOOGLE_MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+
 // 하루 동선 폴리라인 — vis.gl에 폴리라인 컴포넌트가 없어 직접 관리한다.
 function RoutePolyline({ path }: { path: { lat: number; lng: number }[] }) {
   const map = useMap();
@@ -105,8 +109,7 @@ export default function DayRouteMap({ apiKey, stops, focusedStopId, onStopClick 
   return (
     <APIProvider apiKey={apiKey} language="ko">
       <Map
-        // AdvancedMarker에는 mapId가 필요하다. TODO: 배포 전 콘솔에서 발급한 Map ID로 교체
-        mapId="DEMO_MAP_ID"
+        mapId={GOOGLE_MAP_ID}
         defaultCenter={stops[0]?.coordinate || { lat: 35.6762, lng: 139.6503 }}
         defaultZoom={13}
         gestureHandling="greedy"

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   MapPin,
   Navigation,
@@ -25,6 +25,7 @@ import {
 import { useTripStore } from '@/stores/tripStore';
 import { Activity } from '@/types/trip';
 import { buildDayMapUrls } from '@/lib/utils/mapUrls';
+import DayRouteMap, { MapStop } from './DayRouteMap';
 import {
   TravelSegmentQuality,
   calculateRouteQuality,
@@ -269,31 +270,44 @@ function ActivityCard({
 }
 
 export default function MapTab() {
-  const { scheduleData, selectedDay, setSelectedDay, userInput } = useTripStore();
-  const selectedDayRef = useRef(selectedDay);
-
-  useEffect(() => {
-    selectedDayRef.current = selectedDay;
-  }, [selectedDay]);
+  const { scheduleData, selectedDay, setSelectedDay, userInput, isGenerating } = useTripStore();
 
   const [mapState, setMapState] = useState<{
     selectedDay: number;
     focusedActivityId: string | null;
     expandedActivityId: string | null;
-    isMapLoading: boolean;
   }>({
     selectedDay,
     focusedActivityId: null,
     expandedActivityId: null,
-    isMapLoading: true,
   });
 
   const isMapStateStale = mapState.selectedDay !== selectedDay;
   const focusedActivityId = isMapStateStale ? null : mapState.focusedActivityId;
   const expandedActivityId = isMapStateStale ? null : mapState.expandedActivityId;
-  const isMapLoading = isMapStateStale ? true : mapState.isMapLoading;
 
   const currentSchedule = scheduleData.find((d) => d.day === selectedDay);
+
+  // 지도 마커 대상: 실제 장소 활동 중 검증된 좌표가 있는 것 (번호는 타임라인 카드와 동일)
+  const mapStops = useMemo<MapStop[]>(() => {
+    if (!currentSchedule) return [];
+
+    return currentSchedule.activities.flatMap((activity, index) => {
+      if (['flight', 'transport'].includes(activity.type) || !activity.coordinate) {
+        return [];
+      }
+      return [
+        {
+          id: activity.id,
+          title: activity.title,
+          time: activity.time,
+          type: activity.type,
+          order: index + 1,
+          coordinate: activity.coordinate,
+        },
+      ];
+    });
+  }, [currentSchedule]);
   const routeQuality = useMemo(() => calculateRouteQuality(currentSchedule), [currentSchedule]);
   const routeSegmentByActivityId = useMemo(
     () => new Map(routeQuality.segments.map((segment) => [segment.fromId, segment])),
@@ -332,7 +346,6 @@ export default function MapTab() {
         selectedDay,
         focusedActivityId: currentFocusedId === activityId ? null : activityId,
         expandedActivityId: currentExpandedId,
-        isMapLoading: true,
       };
     });
   };
@@ -346,7 +359,6 @@ export default function MapTab() {
         selectedDay,
         focusedActivityId: currentFocusedId,
         expandedActivityId: currentExpandedId === activityId ? null : activityId,
-        isMapLoading: state.selectedDay === selectedDay ? state.isMapLoading : true,
       };
     });
   };
@@ -455,7 +467,6 @@ export default function MapTab() {
                       selectedDay,
                       focusedActivityId: null,
                       expandedActivityId,
-                      isMapLoading: true,
                     })
                   }
                   className="text-xs flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1.5 rounded-full transition-colors"
@@ -495,48 +506,35 @@ export default function MapTab() {
         {/* 오른쪽: 지도 */}
         <div className="order-1 lg:order-2">
           <div className="bg-slate-100 rounded-2xl h-[400px] lg:h-[500px] relative overflow-hidden border border-slate-200 shadow-inner">
-            {/* 로딩 오버레이 */}
-            {isMapLoading &&
-              GOOGLE_API_KEY &&
-              currentSchedule &&
-              currentSchedule.activities.length > 0 && (
-                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-2">
-                    <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
-                    <span className="text-sm text-slate-500">지도 로딩 중...</span>
-                  </div>
-                </div>
-              )}
-
-            {GOOGLE_API_KEY && currentSchedule && currentSchedule.activities.length > 0 ? (
-              <iframe
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                loading="lazy"
-                allowFullScreen
-	                referrerPolicy="no-referrer-when-downgrade"
-	                src={mapUrls.embed}
-	                title="Google Maps"
-	                onLoad={() => {
-	                  if (selectedDayRef.current !== selectedDay) return;
-	                  setMapState((state) => ({
-	                    selectedDay,
-	                    focusedActivityId: state.selectedDay === selectedDay ? state.focusedActivityId : null,
-	                    expandedActivityId:
-	                      state.selectedDay === selectedDay ? state.expandedActivityId : null,
-	                    isMapLoading: false,
-	                  }));
-	                }}
-	                className="transition-opacity duration-300"
-	              />
+            {GOOGLE_API_KEY && mapStops.length > 0 ? (
+              <DayRouteMap
+                apiKey={GOOGLE_API_KEY}
+                stops={mapStops}
+                focusedStopId={focusedActivityId}
+                onStopClick={handleActivitySelect}
+              />
             ) : (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center p-6">
-                  <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500 font-medium mb-1">
-                    {!GOOGLE_API_KEY ? 'Google Maps API 키가 필요합니다' : '표시할 장소가 없습니다'}
-                  </p>
+                  {isGenerating && currentSchedule && currentSchedule.activities.length > 0 ? (
+                    <>
+                      <Loader2 className="w-10 h-10 text-slate-300 mx-auto mb-3 animate-spin" />
+                      <p className="text-slate-500 font-medium mb-1">
+                        지도 좌표를 수집하는 중이에요...
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-500 font-medium mb-1">
+                        {!GOOGLE_API_KEY
+                          ? 'Google Maps API 키가 필요합니다'
+                          : currentSchedule && currentSchedule.activities.length > 0
+                            ? '검증된 지도 좌표가 아직 없습니다'
+                            : '표시할 장소가 없습니다'}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             )}

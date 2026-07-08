@@ -150,6 +150,52 @@ export async function geocodePlace(query: string): Promise<ValidatedPlace> {
   }
 }
 
+type DirectionsMode = 'transit' | 'walking' | 'driving';
+
+async function fetchDirectionsSegment(
+  origin: string,
+  destination: string,
+  mode: DirectionsMode,
+  apiKey: string
+): Promise<TravelSegment | null> {
+  try {
+    const params = new URLSearchParams({
+      origin,
+      destination,
+      mode,
+      key: apiKey,
+      language: 'ko',
+    });
+
+    const response = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as DirectionsResponse & { error_message?: string };
+    const leg = data.routes?.[0]?.legs?.[0];
+
+    if (data.status !== 'OK' || !leg?.duration || !leg?.distance) {
+      warnApiStatusOnce(`Directions(${mode})`, data.status, data.error_message);
+      return null;
+    }
+
+    return {
+      travelTimeToNext: leg.duration.text,
+      travelDistanceToNext: leg.distance.text,
+      travelMinutesToNext: Math.round(leg.duration.value / 60),
+      travelMetersToNext: leg.distance.value,
+    };
+  } catch (error) {
+    console.error('Google Maps directions failed:', error);
+    return null;
+  }
+}
+
+// 도보로 이 시간을 넘기면 차량 경로가 더 현실적인 추정치다.
+const WALKING_FALLBACK_MAX_MINUTES = 40;
+
 async function estimateTravelSegment(origin: string, destination: string) {
   const apiKey = getGoogleMapsKey();
   const cacheKey = `${origin.trim().toLocaleLowerCase()}→${destination
@@ -165,41 +211,26 @@ async function estimateTravelSegment(origin: string, destination: string) {
     return null;
   }
 
-  try {
-    const params = new URLSearchParams({
-      origin,
-      destination,
-      mode: 'transit',
-      key: apiKey,
-      language: 'ko',
-    });
-
-    const response = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as DirectionsResponse & { error_message?: string };
-    const leg = data.routes?.[0]?.legs?.[0];
-
-    if (data.status !== 'OK' || !leg?.duration || !leg?.distance) {
-      warnApiStatusOnce('Directions', data.status, data.error_message);
-      return null;
-    }
-
-    const segment = {
-      travelTimeToNext: leg.duration.text,
-      travelDistanceToNext: leg.distance.text,
-      travelMinutesToNext: Math.round(leg.duration.value / 60),
-      travelMetersToNext: leg.distance.value,
-    };
-    writeCache(directionsCache, cacheKey, segment);
-    return segment;
-  } catch (error) {
-    console.error('Google Maps directions failed:', error);
-    return null;
+  // 키에 따라 transit 결과가 제공되지 않는 경우가 있어(ZERO_RESULTS)
+  // 대중교통 → 도보 → 차량 순으로 폴백한다.
+  const transit = await fetchDirectionsSegment(origin, destination, 'transit', apiKey);
+  if (transit) {
+    writeCache(directionsCache, cacheKey, transit);
+    return transit;
   }
+
+  const walking = await fetchDirectionsSegment(origin, destination, 'walking', apiKey);
+  if (walking && walking.travelMinutesToNext <= WALKING_FALLBACK_MAX_MINUTES) {
+    writeCache(directionsCache, cacheKey, walking);
+    return walking;
+  }
+
+  const driving = await fetchDirectionsSegment(origin, destination, 'driving', apiKey);
+  const segment = driving || walking;
+  if (segment) {
+    writeCache(directionsCache, cacheKey, segment);
+  }
+  return segment;
 }
 
 export async function validateItineraryLocations(

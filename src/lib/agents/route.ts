@@ -38,6 +38,76 @@ const openai = new OpenAI({
 });
 
 // ============================================
+// 꼭 가고 싶은 장소(must-visit)의 날짜 사전 배정
+// ============================================
+// 날짜별 일정이 병렬로 생성되어 서로의 내용을 모르기 때문에, 같은 장소가
+// 여러 날에 중복 편성되는 문제가 있었다. 생성 전에 장소마다 담당 날짜를
+// 확정해 "그 날에만 포함"하도록 강제한다.
+export function assignMustVisitPlaces(
+  mustVisitPlaces: string[] | undefined,
+  totalDays: number
+): Map<number, string[]> {
+  const assignment = new Map<number, string[]>();
+  const places = (mustVisitPlaces || []).map((place) => place.trim()).filter(Boolean);
+  if (places.length === 0) return assignment;
+
+  // 도착일(1일차)·출발일(마지막 날)은 이동으로 시간이 짧으므로 중간 날짜에 우선 배정한다.
+  const middleDays = Array.from({ length: Math.max(0, totalDays - 2) }, (_, i) => i + 2);
+  const candidateDays = middleDays.length > 0 ? middleDays : [1];
+
+  places.forEach((place, index) => {
+    const day = candidateDays[index % candidateDays.length];
+    assignment.set(day, [...(assignment.get(day) || []), place]);
+  });
+
+  return assignment;
+}
+
+const normalizePlaceKey = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+const matchesPlace = (title: string, place: string) => {
+  const normalizedTitle = normalizePlaceKey(title);
+  const normalizedPlace = normalizePlaceKey(place);
+  if (!normalizedTitle || !normalizedPlace) return false;
+  return normalizedTitle.includes(normalizedPlace) || normalizedPlace.includes(normalizedTitle);
+};
+
+// 다른 날짜에 배정된 must-visit이 이 날짜에 끼어들면 제거한다 (프롬프트 무시 대비 안전망)
+export function removeForeignMustVisits(
+  day: DayItinerary,
+  foreignPlaces: string[]
+): DayItinerary {
+  if (foreignPlaces.length === 0) return day;
+
+  return {
+    ...day,
+    activities: day.activities.filter(
+      (activity) => !foreignPlaces.some((place) => matchesPlace(activity.title, place))
+    ),
+  };
+}
+
+// 여러 날에 완전히 같은 관광지가 반복 편성되면 첫 등장만 남긴다
+const CROSS_DAY_DEDUPE_TYPES = new Set(['sightseeing', 'theme']);
+
+export function dedupeRepeatedPlaces(itinerary: DayItinerary[]): DayItinerary[] {
+  const seenPlaceKeys = new Set<string>();
+
+  return itinerary.map((day) => ({
+    ...day,
+    activities: day.activities.filter((activity) => {
+      if (!CROSS_DAY_DEDUPE_TYPES.has(activity.type)) return true;
+
+      const key = normalizePlaceKey(activity.title);
+      if (!key) return true;
+      if (seenPlaceKeys.has(key)) return false;
+      seenPlaceKeys.add(key);
+      return true;
+    }),
+  }));
+}
+
+// ============================================
 // 단일 날짜 일정 생성 (병렬 호출용)
 // ============================================
 export async function generateDayItinerary(
@@ -46,8 +116,9 @@ export async function generateDayItinerary(
   intent: Intent,
   flight: FlightContext,
   hotel: HotelContext,
-  mustVisitPlaces?: string[],
-  suggestion?: AgentSuggestion
+  assignedMustVisit?: string[],
+  suggestion?: AgentSuggestion,
+  otherDaysMustVisit?: string[]
 ): Promise<DayItinerary> {
   const isFirstDay = dayNumber === 1;
   const isLastDay = dayNumber === totalDays;
@@ -135,9 +206,12 @@ Create a highly realistic, minute-by-minute itinerary for **Day ${dayNumber} of 
 
             [CRITICAL - GEOGRAPHIC CLUSTERING]
             - **ONE DAY = ONE AREA**: Minimize travel time. Do NOT zig-zag across the city.
-            - **Basecamp Strategy**: User is staying at **"${hotel.name}"**. 
+            - **Basecamp Strategy**: User is staying at **"${hotel.name}"**.
               - Morning: Start from Hotel.
               - Evening: Loop back towards the Hotel area.
+            - **NO REPEATS ACROSS DAYS**: This is one day of a ${totalDays}-day trip planned in parallel.
+              Never schedule an attraction reserved for another day (listed below), and pick spots
+              distinctive to today's area so days don't overlap.
             
 ${daySpecificInstructions}
 
@@ -183,19 +257,31 @@ ${stylePrompt}
             - Flight Duration: ${flight.flightDuration}
 - Return Departure: ${flight.returnTime}
 
-Must-Visit Places (USER PRIORITY):
+Must-Visit Places assigned to THIS DAY (USER PRIORITY):
 ${
-  mustVisitPlaces && mustVisitPlaces.length > 0
-    ? mustVisitPlaces.map((p) => `- ${p}`).join('\n')
-    : '- None specified'
+  assignedMustVisit && assignedMustVisit.length > 0
+    ? assignedMustVisit.map((p) => `- ${p}`).join('\n')
+    : '- None'
+}
+
+Must-visit places reserved for OTHER days of this trip (STRICTLY FORBIDDEN today):
+${
+  otherDaysMustVisit && otherDaysMustVisit.length > 0
+    ? otherDaysMustVisit.map((p) => `- ${p}`).join('\n')
+    : '- None'
 }
 
             Instruction:
 Create a well-structured Day ${dayNumber} itinerary. Cluster activities by location. Make it relaxed but fulfilling.
 Follow the user travel concept above as the main planning rule.
 ${
-  mustVisitPlaces && mustVisitPlaces.length > 0
-    ? '**IMPORTANT**: Try to include the must-visit places in the itinerary. Distribute them across days naturally based on geographic clustering.'
+  assignedMustVisit && assignedMustVisit.length > 0
+    ? '**IMPORTANT**: Today MUST include every place assigned to this day. Build the day\'s route around them and allocate enough time (a theme park deserves most of the day).'
+    : ''
+}
+${
+  otherDaysMustVisit && otherDaysMustVisit.length > 0
+    ? '**NEVER** schedule the places reserved for other days — each must-visit place appears EXACTLY ONCE in the whole trip, on its assigned day only.'
     : ''
 }
 ${
@@ -240,9 +326,18 @@ export async function generateItinerary(
   }
 
   try {
+    // 중복 편성 방지: must-visit을 날짜별로 사전 배정한다.
+    const mustVisitAssignment = assignMustVisitPlaces(mustVisitPlaces, intent.duration);
+    const allAssignedPlaces = [...mustVisitAssignment.values()].flat();
+
     const dayPromises: Promise<DayItinerary>[] = [];
 
     for (let day = 1; day <= intent.duration; day++) {
+      const assignedForDay = mustVisitAssignment.get(day) || [];
+      const reservedForOtherDays = allAssignedPlaces.filter(
+        (place) => !assignedForDay.includes(place)
+      );
+
       dayPromises.push(
         generateDayItinerary(
           day,
@@ -250,9 +345,10 @@ export async function generateItinerary(
           intent,
           flight,
           hotel,
-          mustVisitPlaces,
-          suggestion
-        )
+          assignedForDay,
+          suggestion,
+          reservedForOtherDays
+        ).then((result) => removeForeignMustVisits(result, reservedForOtherDays))
       );
     }
 
@@ -260,12 +356,13 @@ export async function generateItinerary(
     const results = await Promise.all(dayPromises);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    // 날짜순 정렬
+    // 날짜순 정렬 후 날짜 간 관광지 중복 제거
     results.sort((a, b) => a.day - b.day);
+    const deduped = dedupeRepeatedPlaces(results);
 
     console.log(`✅ [4-Route] ${intent.destination} 일정 생성 완료! (${elapsed}s, 병렬 처리)`);
 
-    return results;
+    return deduped;
   } catch (error) {
     console.error('❌ [4-Route] Error:', error);
     return [];

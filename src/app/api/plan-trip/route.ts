@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import { analyzeIntent } from '@/lib/agents/intent';
 import { determineFlightConstraints } from '@/lib/agents/flight';
 import { determineHotel } from '@/lib/agents/hotel';
-import { DayItinerary, generateDayItinerary, generateItinerary } from '@/lib/agents/route';
+import {
+  DayItinerary,
+  assignMustVisitPlaces,
+  dedupeRepeatedPlaces,
+  generateDayItinerary,
+  generateItinerary,
+  removeForeignMustVisits,
+} from '@/lib/agents/route';
 import { verifyBudget } from '@/lib/agents/budget';
 import { validateItineraryLocations } from '@/lib/utils/googleMaps';
 
@@ -122,10 +129,23 @@ export async function POST(req: Request) {
           message: '최적 동선 시뮬레이션 가동...',
         });
 
+        // 같은 must-visit 장소가 여러 날에 중복 편성되지 않도록 날짜별로 사전 배정한다.
+        // (병렬 생성이라 각 날짜가 서로의 일정을 모르기 때문)
+        const mustVisitAssignment = assignMustVisitPlaces(
+          userRequest.mustVisitPlaces,
+          intent.duration
+        );
+        const allAssignedPlaces = [...mustVisitAssignment.values()].flat();
+
         // 일자별로 병렬 생성하되, 완료되는 날짜부터 즉시 스트리밍해
         // 사용자가 전체 완성을 기다리지 않고 Day 1부터 볼 수 있게 한다.
         const dayPromises = Array.from({ length: intent.duration }, (_, index) => {
           const dayNumber = index + 1;
+          const assignedForDay = mustVisitAssignment.get(dayNumber) || [];
+          const reservedForOtherDays = allAssignedPlaces.filter(
+            (place) => !assignedForDay.includes(place)
+          );
+
           return measureStage(`route-day${dayNumber}`, () =>
             generateDayItinerary(
               dayNumber,
@@ -133,15 +153,19 @@ export async function POST(req: Request) {
               intent,
               flightContext,
               hotelContext,
-              userRequest.mustVisitPlaces
+              assignedForDay,
+              undefined,
+              reservedForOtherDays
             )
           )
             .then((day) => {
+              // 다른 날짜에 배정된 must-visit이 끼어들었으면 스트리밍 전에 제거한다.
+              const cleanDay = removeForeignMustVisits(day, reservedForOtherDays);
               sendEvent({
                 type: 'day-result',
-                data: { destination: intent.destination, totalDays: intent.duration, day },
+                data: { destination: intent.destination, totalDays: intent.duration, day: cleanDay },
               });
-              return day;
+              return cleanDay;
             })
             .catch((error): DayItinerary => {
               // 하루 생성 실패가 전체 여행 생성을 막지 않도록 빈 하루로 대체한다.
@@ -150,8 +174,10 @@ export async function POST(req: Request) {
             });
         });
 
-        let itinerary = (await measureStage('route', () => Promise.all(dayPromises))).sort(
-          (a, b) => a.day - b.day
+        let itinerary = dedupeRepeatedPlaces(
+          (await measureStage('route', () => Promise.all(dayPromises))).sort(
+            (a, b) => a.day - b.day
+          )
         );
 
         sendEvent({

@@ -90,9 +90,18 @@ export interface ApiResultData {
   budget: ApiBudget;
 }
 
+// 여행 메타 (일정 생성 전에 미리 전송 — 결과 화면 골격용)
+export interface ApiTripMeta {
+  intent: ApiIntent;
+  flight: ApiFlight;
+  hotel: ApiHotel;
+}
+
 // SSE 스트림 페이로드 타입
 export type StreamPayload =
   | { type: 'progress'; stepIndex: number; status: 'running' | 'complete'; message: string }
+  | { type: 'trip-meta'; data: ApiTripMeta }
+  | { type: 'day-result'; data: { destination: string; totalDays: number; day: ApiDayItem } }
   | { type: 'result'; data: ApiResultData }
   | { type: 'enrichment'; data: { destination: string; itinerary: ApiDayItem[] } }
   | { type: 'error'; message: string };

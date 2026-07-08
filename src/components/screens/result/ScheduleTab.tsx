@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { EditIcon, Star } from 'lucide-react';
+import { EditIcon, Loader2, Star } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 
 interface ScheduleTabProps {
@@ -15,6 +15,7 @@ export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTa
     selectedDay,
     setSelectedDay,
     setSelectedActivityId,
+    isGenerating,
   } = useTripStore();
 
   const currentSchedule = scheduleData.find((d) => d.day === selectedDay);
@@ -52,9 +53,19 @@ export default function ScheduleTab({ onNavigate, readOnly = false }: ScheduleTa
       {/* 일정 리스트 */}
       <div className="space-y-0">
         {currentSchedule?.activities.length === 0 ? (
-          <div className="py-10 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            아직 일정이 없습니다. 아래 편집 버튼을 눌러 추가해보세요!
-          </div>
+          isGenerating ? (
+            // 점진 스트리밍: 아직 도착하지 않은 날짜는 생성 중 상태를 보여준다
+            <div className="py-14 flex flex-col items-center gap-3 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              <Loader2 className="w-7 h-7 animate-spin text-slate-300" />
+              <p className="text-sm font-medium">
+                AI가 Day {selectedDay} 일정을 만드는 중이에요...
+              </p>
+            </div>
+          ) : (
+            <div className="py-10 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              아직 일정이 없습니다. 아래 편집 버튼을 눌러 추가해보세요!
+            </div>
+          )
         ) : (
           currentSchedule?.activities.map((item, index) => {
             const isLastItem = index === (currentSchedule?.activities.length || 0) - 1;

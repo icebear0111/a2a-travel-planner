@@ -18,13 +18,17 @@ const ICONS = [
 ];
 
 export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
-  const { currentAgentStatus, isGenerating } = useTripStore();
+  const { currentAgentStatus, isGenerating, scheduleData } = useTripStore();
   const [activeIconIndex, setActiveIconIndex] = useState(0);
 
   // 1. 실제 진행률 계산 (백엔드 데이터 기반)
   const completedCount = currentAgentStatus.filter((a) => a.status === 'complete').length;
   // 너무 0%에 오래 머물지 않도록 최소값 보정
   const progress = Math.max(5, Math.round((completedCount / currentAgentStatus.length) * 100));
+
+  // Day 1 일정이 스트리밍으로 먼저 도착하면 전체 완성을 기다리지 않고 넘어간다.
+  // (generateTrip 시작 시 scheduleData가 초기화되므로 이전 여행 데이터와 섞이지 않는다)
+  const isDayOneReady = scheduleData.some((day) => day.day === 1 && day.activities.length > 0);
 
   // 2. 아이콘 자동 롤링 애니메이션
   useEffect(() => {
@@ -34,15 +38,16 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // 3. 100% 도달 시 완료 처리
+  // 3. Day 1 준비 또는 전체 완료 시 결과 화면으로 전환
   useEffect(() => {
-    if (!isGenerating && progress === 100) {
+    const canComplete = (isGenerating && isDayOneReady) || (!isGenerating && progress === 100);
+    if (canComplete) {
       const timer = setTimeout(() => {
         onComplete();
       }, 600);
       return () => clearTimeout(timer);
     }
-  }, [isGenerating, progress, onComplete]);
+  }, [isGenerating, isDayOneReady, progress, onComplete]);
 
   // 현재 보여줄 아이콘 컴포넌트
   const CurrentIcon = ICONS[activeIconIndex].icon;

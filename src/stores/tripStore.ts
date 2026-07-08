@@ -392,7 +392,16 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
     // 여기서는 '빈 문자열'일 경우 Intent Agent가 처리하므로 일단 주석 처리하거나 패스합니다.
     // if (!input.flight.departureDate || !input.flight.returnDate) { ... }
 
-    set({ isGenerating: true, currentAgentStatus: initialAgentStatus });
+    // 이전 여행 데이터가 남아 있으면 로딩 화면의 조기 전환 조건(Day 1 준비됨)을
+    // 오염시키므로 생성 시작 시점에 화면 데이터를 초기화한다.
+    set({
+      isGenerating: true,
+      currentAgentStatus: initialAgentStatus,
+      tripData: emptyTripData,
+      scheduleData: emptyScheduleData,
+      budgetData: emptyBudgetData,
+      selectedDay: 1,
+    });
 
     try {
       // API 호출 (변경된 UserInput 구조 전송)
@@ -445,18 +454,73 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
           }
         }
 
-        // (B) 최종 결과 수신
+        // (B) 여행 메타 수신 — 일정 생성 전에 결과 화면 골격을 먼저 준비한다 (점진 스트리밍)
+        else if (parsed.type === 'trip-meta') {
+          const { intent } = parsed.data;
+
+          set({
+            tripData: {
+              title: intent.destination,
+              subtitle: `${intent.duration - 1}박 ${intent.duration}일 AI 추천 여행`,
+              dates: intent.startDate || '날짜 미정',
+              days: intent.duration,
+              image: DEFAULT_TRAVEL_IMAGE,
+            },
+            // 모든 날짜를 빈 하루로 미리 채워 날짜 탭이 즉시 렌더링되게 한다.
+            scheduleData: Array.from({ length: intent.duration }, (_, index) => ({
+              day: index + 1,
+              date: `Day ${index + 1}`,
+              theme: 'AI 추천 코스',
+              activities: [],
+            })),
+            budgetData: emptyBudgetData,
+            selectedDay: 1,
+          });
+
+          // 대표 이미지는 화면 전환을 막지 않고 백그라운드에서 로드한다.
+          void fetchUnsplashImage(intent.destination).then((image) => {
+            set((state) =>
+              state.tripData.title === intent.destination
+                ? { tripData: { ...state.tripData, image } }
+                : state
+            );
+          });
+        }
+
+        // (C) 하루 단위 일정 수신 — 완료된 날짜부터 즉시 화면에 반영한다
+        else if (parsed.type === 'day-result') {
+          const { destination, day } = parsed.data;
+
+          set((state) => {
+            if (state.tripData.title !== destination) return state;
+
+            const existingDay = state.scheduleData.find((item) => item.day === day.day);
+            const mappedDay = mapApiDayToScheduleDay(day, destination, existingDay);
+
+            return {
+              scheduleData: existingDay
+                ? state.scheduleData.map((item) => (item.day === day.day ? mappedDay : item))
+                : [...state.scheduleData, mappedDay].sort((a, b) => a.day - b.day),
+            };
+          });
+          console.log(`📅 Day ${day.day} 일정 수신`);
+        }
+
+        // (D) 최종 결과 수신
         else if (parsed.type === 'result') {
           const data = parsed.data;
           console.log('✨ 최종 데이터 수신:', data);
 
               // 1) 여행 기본 정보 매핑
+              // trip-meta 단계에서 이미 로드한 대표 이미지는 유지한다.
+              const loadedImage =
+                get().tripData.title === data.intent.destination ? get().tripData.image : '';
               const newTripData = {
                 title: data.intent.destination,
                 subtitle: `${data.intent.duration - 1}박 ${data.intent.duration}일 AI 추천 여행`,
                 dates: data.intent.startDate || '날짜 미정',
                 days: data.intent.duration,
-                image: DEFAULT_TRAVEL_IMAGE,
+                image: loadedImage || DEFAULT_TRAVEL_IMAGE,
               };
 
               // 2) 일정 정보 매핑
@@ -554,14 +618,16 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
                 isGenerating: false,
               });
 
-              // 대표 이미지는 결과 화면 전환을 막지 않고 백그라운드에서 교체한다.
-              void fetchUnsplashImage(data.intent.destination).then((image) => {
-                set((state) =>
-                  state.tripData.title === data.intent.destination
-                    ? { tripData: { ...state.tripData, image } }
-                    : state
-                );
-              });
+              // trip-meta 단계에서 이미지를 아직 못 받았을 때만 백그라운드로 재시도한다.
+              if (get().tripData.image === DEFAULT_TRAVEL_IMAGE) {
+                void fetchUnsplashImage(data.intent.destination).then((image) => {
+                  set((state) =>
+                    state.tripData.title === data.intent.destination
+                      ? { tripData: { ...state.tripData, image } }
+                      : state
+                  );
+                });
+              }
 
           console.log('🎉 UI 업데이트 완료! 제목:', newTripData.title);
         } else if (parsed.type === 'enrichment') {

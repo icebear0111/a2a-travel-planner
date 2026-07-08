@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { analyzeIntent } from '@/lib/agents/intent';
 import { determineFlightConstraints } from '@/lib/agents/flight';
 import { determineHotel } from '@/lib/agents/hotel';
-import { generateItinerary } from '@/lib/agents/route';
+import { DayItinerary, generateDayItinerary, generateItinerary } from '@/lib/agents/route';
 import { verifyBudget } from '@/lib/agents/budget';
 import { validateItineraryLocations } from '@/lib/utils/googleMaps';
 
@@ -11,6 +11,8 @@ import { validateItineraryLocations } from '@/lib/utils/googleMaps';
 
 type StreamPayload =
   | { type: 'progress'; stepIndex: number; status: 'running' | 'complete'; message: string }
+  | { type: 'trip-meta'; data: Record<string, unknown> }
+  | { type: 'day-result'; data: { destination: string; totalDays: number; day: DayItinerary } }
   | { type: 'result'; data: Record<string, unknown> }
   | { type: 'enrichment'; data: { destination: string; itinerary: unknown[] } }
   | { type: 'error'; message: string };
@@ -33,9 +35,17 @@ export async function POST(req: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const pipelineStartedAt = Date.now();
+      // 클라이언트가 연결을 끊으면 controller가 닫혀 enqueue가 throw한다.
+      // 병렬 day-result 전송 중 그 예외가 일정 생성 실패로 둔갑하지 않도록 가드한다.
+      let isStreamClosed = false;
       const sendEvent = (data: StreamPayload) => {
-        const text = `data: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(text));
+        if (isStreamClosed) return;
+        try {
+          const text = `data: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(text));
+        } catch {
+          isStreamClosed = true;
+        }
       };
 
       try {
@@ -95,6 +105,16 @@ export async function POST(req: Request) {
         // 숙소 좌표 체크 (사용자가 직접 입력했으면 좌표가 없을 수도 있음 -> Hotel 에이전트에서 처리됨)
         if (!hotelContext) throw new Error('숙소 정보를 확정할 수 없습니다.');
 
+        // 프론트가 결과 화면 골격(제목·날짜 탭)을 미리 그릴 수 있도록 여행 메타를 먼저 보낸다.
+        sendEvent({
+          type: 'trip-meta',
+          data: {
+            intent,
+            flight: flightContext,
+            hotel: hotelContext,
+          } as unknown as Record<string, unknown>,
+        });
+
         sendEvent({
           type: 'progress',
           stepIndex: 3,
@@ -102,16 +122,36 @@ export async function POST(req: Request) {
           message: '최적 동선 시뮬레이션 가동...',
         });
 
-        // Route 에이전트는 기존 Context들을 활용하여 동선을 짭니다.
-        // mustVisitPlaces가 있으면 함께 전달하여 일정에 반영
-        let itinerary = await measureStage('route', () =>
-          generateItinerary(
-            intent,
-            flightContext,
-            hotelContext,
-            undefined,
-            userRequest.mustVisitPlaces
+        // 일자별로 병렬 생성하되, 완료되는 날짜부터 즉시 스트리밍해
+        // 사용자가 전체 완성을 기다리지 않고 Day 1부터 볼 수 있게 한다.
+        const dayPromises = Array.from({ length: intent.duration }, (_, index) => {
+          const dayNumber = index + 1;
+          return measureStage(`route-day${dayNumber}`, () =>
+            generateDayItinerary(
+              dayNumber,
+              intent.duration,
+              intent,
+              flightContext,
+              hotelContext,
+              userRequest.mustVisitPlaces
+            )
           )
+            .then((day) => {
+              sendEvent({
+                type: 'day-result',
+                data: { destination: intent.destination, totalDays: intent.duration, day },
+              });
+              return day;
+            })
+            .catch((error): DayItinerary => {
+              // 하루 생성 실패가 전체 여행 생성을 막지 않도록 빈 하루로 대체한다.
+              console.error(`❌ [4-Route] Day ${dayNumber} 생성 실패:`, error);
+              return { day: dayNumber, activities: [] };
+            });
+        });
+
+        let itinerary = (await measureStage('route', () => Promise.all(dayPromises))).sort(
+          (a, b) => a.day - b.day
         );
 
         sendEvent({
@@ -196,7 +236,13 @@ export async function POST(req: Request) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         sendEvent({ type: 'error', message: errorMessage });
       } finally {
-        controller.close();
+        if (!isStreamClosed) {
+          try {
+            controller.close();
+          } catch {
+            // 클라이언트가 먼저 연결을 끊은 경우 — 무시한다.
+          }
+        }
       }
     },
   });

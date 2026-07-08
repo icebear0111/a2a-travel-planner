@@ -33,8 +33,6 @@ export interface DayItinerary {
   activities: Activity[];
 }
 
-export type RegenerationMode = 'balanced' | 'cheaper' | 'relaxed' | 'fuller';
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -49,9 +47,7 @@ export async function generateDayItinerary(
   flight: FlightContext,
   hotel: HotelContext,
   mustVisitPlaces?: string[],
-  suggestion?: AgentSuggestion,
-  mode: RegenerationMode = 'balanced',
-  currentActivities?: Activity[]
+  suggestion?: AgentSuggestion
 ): Promise<DayItinerary> {
   const isFirstDay = dayNumber === 1;
   const isLastDay = dayNumber === totalDays;
@@ -114,28 +110,6 @@ export async function generateDayItinerary(
 - Prices must be realistic KRW estimates after the cost reduction.`
       : '';
 
-  const modeInstructionMap: Record<RegenerationMode, string> = {
-    balanced: 'Keep the day balanced, realistic, and close to the original trip preferences.',
-    cheaper:
-      'Reduce paid attractions, expensive restaurants, shopping, taxis, and optional ticket costs. Prefer free viewpoints, parks, markets, and public transit.',
-    relaxed:
-      'Make the day more relaxed. Reduce the number of stops, add generous travel buffers, and avoid late-night overload.',
-    fuller:
-      'Make the day more active without becoming unrealistic. Add one optional stop only when the route stays geographically clustered.',
-  };
-
-  const currentPlanInstruction = currentActivities?.length
-    ? `
-[CURRENT DAY PLAN TO IMPROVE]
-${currentActivities
-  .map(
-    (activity) => `- ${activity.time} ${activity.title} (${activity.type}, ${activity.duration})`
-  )
-  .join('\n')}
-
-Use this as context, but return a freshly optimized full-day itinerary for Day ${dayNumber}.`
-    : '';
-
   const response = await openai.chat.completions.create({
     model: 'gpt-5.4-mini',
     // 일정 생성은 추론보다 생성 위주 작업이라 추론을 생략해 지연시간을 최소화한다.
@@ -169,12 +143,7 @@ ${daySpecificInstructions}
 
 ${budgetAdjustmentInstruction}
 
-[REGENERATION MODE]
-${modeInstructionMap[mode]}
-
 ${stylePrompt}
-
-${currentPlanInstruction}
 
             REQUIRED JSON STRUCTURE:
             {
@@ -247,113 +216,6 @@ ${
   return {
     day: dayNumber,
     activities: result.activities || [],
-  };
-}
-
-export async function generateActivityReplacement(
-  intent: Intent,
-  flight: FlightContext,
-  hotel: HotelContext,
-  day: DayItinerary,
-  targetActivity: Activity,
-  mustVisitPlaces?: string[]
-): Promise<Activity> {
-  console.log(`🔁 [4-Route] Day ${day.day} 활동 대체 생성: ${targetActivity.title}`);
-  const stylePrompt = formatTravelStyleForPrompt(intent);
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-5.4-mini',
-    reasoning_effort: 'none',
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'system',
-        content: `
-You are an expert travel itinerary editor.
-Replace exactly ONE activity while preserving the day's route flow, schedule rhythm, and travel realism.
-
-[MANDATORY FORMAT]
-1. Response strictly JSON.
-2. LANGUAGE: Korean title and desc.
-3. Return a single "activity" object only.
-4. Keep the same time window and similar duration unless a small adjustment improves realism.
-5. Do not return the same place as the target.
-6. Prefer real, searchable places near the surrounding activities.
-7. Types: 'transport', 'hotel', 'sightseeing', 'food', 'shopping', 'coffee', 'theme', 'etc'.
-8. id must be "${targetActivity.id}" so the frontend can replace in place.
-
-REQUIRED JSON STRUCTURE:
-{
-  "activity": {
-    "id": "${targetActivity.id}",
-    "time": "${targetActivity.time}",
-    "duration": "${targetActivity.duration}",
-    "type": "sightseeing",
-    "title": "...",
-    "location": "...",
-    "desc": "핵심 키워드",
-    "price": 0
-  }
-}
-        `,
-      },
-      {
-        role: 'user',
-        content: `
-Destination: ${intent.destination}
-Day: ${day.day} of ${intent.duration}
-Themes: ${intent.themes.join(', ')}
-Companion: ${intent.companion}
-
-Hotel Basecamp:
-- ${hotel.name}
-- ${hotel.address}
-
-${stylePrompt}
-
-Flight Constraints:
-- Origin Departure: ${flight.departureTime}
-- Return Departure: ${flight.returnTime}
-
-Must-Visit Places:
-${
-  mustVisitPlaces && mustVisitPlaces.length > 0
-    ? mustVisitPlaces.map((place) => `- ${place}`).join('\n')
-    : '- None specified'
-}
-
-Current Day Plan:
-${day.activities
-  .map(
-    (activity) =>
-      `- ${activity.time} ${activity.title} (${activity.type}, ${activity.duration}, ${
-        activity.location || intent.destination
-      })`
-  )
-  .join('\n')}
-
-Target Activity To Replace:
-- ${targetActivity.time} ${targetActivity.title}
-- Type: ${targetActivity.type}
-- Location: ${targetActivity.location || intent.destination}
-- Desc: ${targetActivity.desc}
-- Price: ${targetActivity.price}
-
-Instruction:
-Suggest one better alternative that fits between the previous and next activities. Keep logistics coherent.
-        `,
-      },
-    ],
-  });
-
-  const content = response.choices[0].message.content;
-  if (!content) throw new Error('No replacement activity generated');
-
-  const result = JSON.parse(content);
-  return {
-    ...targetActivity,
-    ...(result.activity || {}),
-    id: targetActivity.id,
   };
 }
 

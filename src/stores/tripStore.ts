@@ -136,8 +136,6 @@ const createScheduleActivity = (
   ...overrides,
 });
 
-type RegenerateMode = 'balanced' | 'cheaper' | 'relaxed' | 'fuller';
-
 const mapApiActivityToScheduleActivity = (
   act: ApiActivity,
   destination: string,
@@ -199,15 +197,6 @@ const mergeActivityEnrichment = (activity: Activity, enriched?: ApiActivity): Ac
   };
 };
 
-const serializeActivityForApi = (activity: Activity) => {
-  const cleanActivity = removeActivityIcon(activity);
-  return {
-    ...cleanActivity,
-    desc: cleanActivity.desc || '',
-    price: cleanActivity.price || 0,
-  };
-};
-
 const getReadableResponseError = async (response: Response) => {
   const rawText = await response.text().catch(() => '');
   const plainText = rawText
@@ -238,9 +227,6 @@ interface ExtendedTripStoreState extends TripStoreState {
   currentTripId: string | null;
   isSaving: boolean;
   isSharing: boolean;
-  isRegeneratingSchedule: boolean;
-  regeneratingDay: number | null;
-  regeneratingActivityId: string | null;
   currentShareId: string | null;
 
   // 액션 함수들
@@ -270,8 +256,6 @@ interface ExtendedTripStoreState extends TripStoreState {
   // 일정 편집 액션
   addScheduleItem: (dayIndex: number, activity?: Partial<Activity>) => void;
   moveScheduleItem: (dayIndex: number, sourceId: string, targetId: string) => void;
-  regenerateDay: (dayIndex: number, mode?: RegenerateMode) => Promise<boolean>;
-  replaceActivityWithAI: (dayIndex: number, itemId: string) => Promise<boolean>;
 }
 
 // 5. Store 구현
@@ -294,9 +278,6 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   currentTripId: null,
   isSaving: false,
   isSharing: false,
-  isRegeneratingSchedule: false,
-  regeneratingDay: null,
-  regeneratingActivityId: null,
   currentShareId: null,
 
   userInput: {
@@ -709,135 +690,6 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       };
     }),
 
-  regenerateDay: async (dayIndex, mode = 'balanced') => {
-    const { userInput, scheduleData, budgetData, tripData } = get();
-    const currentDay = scheduleData.find((day) => day.day === dayIndex);
-
-    if (!currentDay) {
-      alert('다시 생성할 날짜를 찾을 수 없습니다.');
-      return false;
-    }
-
-    set({
-      isRegeneratingSchedule: true,
-      regeneratingDay: dayIndex,
-      regeneratingActivityId: null,
-    });
-
-    try {
-      const response = await fetch('/api/regenerate-day', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userRequest: userInput,
-          dayNumber: dayIndex,
-          totalDays: scheduleData.length || tripData.days,
-          mode,
-          currentDay: {
-            day: currentDay.day,
-            activities: currentDay.activities.map(serializeActivityForApi),
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(errorData?.error || '일정 재생성에 실패했습니다.');
-      }
-
-      const data = (await response.json()) as { day: ApiDayItem };
-      const destination = userInput.destination || tripData.title;
-      const regeneratedDay = mapApiDayToScheduleDay(data.day, destination, currentDay);
-      const newScheduleData = scheduleData.map((day) =>
-        day.day === dayIndex ? regeneratedDay : day
-      );
-
-      set({
-        scheduleData: newScheduleData,
-        budgetData: buildBudgetFromSchedule(budgetData, newScheduleData),
-        isRegeneratingSchedule: false,
-        regeneratingDay: null,
-        regeneratingActivityId: null,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('일정 재생성 실패:', error);
-      alert(error instanceof Error ? error.message : '일정 재생성에 실패했습니다.');
-      set({ isRegeneratingSchedule: false, regeneratingDay: null, regeneratingActivityId: null });
-      return false;
-    }
-  },
-
-  replaceActivityWithAI: async (dayIndex, itemId) => {
-    const { userInput, scheduleData, budgetData, tripData } = get();
-    const currentDay = scheduleData.find((day) => day.day === dayIndex);
-    const targetActivity = currentDay?.activities.find((activity) => activity.id === itemId);
-
-    if (!currentDay || !targetActivity) {
-      alert('대체할 일정을 찾을 수 없습니다.');
-      return false;
-    }
-
-    set({
-      isRegeneratingSchedule: true,
-      regeneratingDay: null,
-      regeneratingActivityId: itemId,
-    });
-
-    try {
-      const response = await fetch('/api/regenerate-day', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userRequest: userInput,
-          dayNumber: dayIndex,
-          totalDays: scheduleData.length || tripData.days,
-          mode: 'replace-activity',
-          currentDay: {
-            day: currentDay.day,
-            activities: currentDay.activities.map(serializeActivityForApi),
-          },
-          targetActivity: serializeActivityForApi(targetActivity),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(errorData?.error || '일정 대체에 실패했습니다.');
-      }
-
-      const data = (await response.json()) as { activity: ApiActivity };
-      const destination = userInput.destination || tripData.title;
-      const replacement = mapApiActivityToScheduleActivity(data.activity, destination, itemId);
-      const newScheduleData = scheduleData.map((daySchedule) => {
-        if (daySchedule.day !== dayIndex) return daySchedule;
-
-        return {
-          ...daySchedule,
-          activities: daySchedule.activities.map((activity) =>
-            activity.id === itemId ? replacement : activity
-          ),
-        };
-      });
-
-      set({
-        scheduleData: newScheduleData,
-        budgetData: buildBudgetFromSchedule(budgetData, newScheduleData),
-        isRegeneratingSchedule: false,
-        regeneratingDay: null,
-        regeneratingActivityId: null,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('일정 대체 실패:', error);
-      alert(error instanceof Error ? error.message : '일정 대체에 실패했습니다.');
-      set({ isRegeneratingSchedule: false, regeneratingDay: null, regeneratingActivityId: null });
-      return false;
-    }
-  },
-
   deleteScheduleItem: (dayIndex, itemId) =>
     set((state) => {
       const newScheduleData = state.scheduleData.map((daySchedule) => {
@@ -927,9 +779,6 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
           budgetData: trip.budgetData as BudgetData,
           currentTripId: tripId,
           selectedDay: 1,
-          isRegeneratingSchedule: false,
-          regeneratingDay: null,
-          regeneratingActivityId: null,
         });
       }
     } catch (error) {
@@ -997,9 +846,6 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       currentShareId: null,
       selectedDay: 1,
       selectedActivityId: null,
-      isRegeneratingSchedule: false,
-      regeneratingDay: null,
-      regeneratingActivityId: null,
       userInput: {
         destination: '',
         mustVisitPlaces: [],
@@ -1086,9 +932,6 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
           budgetData: sharedTrip.budgetData as BudgetData,
           currentShareId: shareId,
           selectedDay: 1,
-          isRegeneratingSchedule: false,
-          regeneratingDay: null,
-          regeneratingActivityId: null,
         });
         return sharedTrip;
       }
@@ -1115,9 +958,6 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       currentTripId: null,
       currentShareId: null,
       selectedDay: 1,
-      isRegeneratingSchedule: false,
-      regeneratingDay: null,
-      regeneratingActivityId: null,
     });
 
     return true;

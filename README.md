@@ -2,7 +2,7 @@
 
 > AI 멀티 에이전트가 설계하는 스마트 여행 계획 서비스
 
-여행지·항공편·숙소 정보만 입력하면, 여러 AI 에이전트가 협력해 **일자별 동선, 예산, 지도 경로까지** 완성된 여행 일정을 자동으로 만들어 줍니다. 생성된 일정은 편집·재생성·저장·공유·캘린더 내보내기까지 한 흐름에서 처리됩니다.
+여행지·항공편·숙소 정보만 입력하면, 여러 AI 에이전트가 협력해 **일자별 동선, 예산, 지도 경로까지** 완성된 여행 일정을 자동으로 만들어 줍니다. 생성된 일정은 편집·저장·공유·캘린더 내보내기까지 한 흐름에서 처리됩니다.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16.0-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)
@@ -36,7 +36,6 @@
 - **점진적 스트리밍(SSE)** — 진행 상황을 실시간으로 보여주고, 완성된 일정을 먼저 띄운 뒤 지도 좌표·이동시간·대표 이미지를 백그라운드에서 채워 체감 속도를 높였습니다.
 - **로컬 우선(Local-first) 최적화** — 자주 쓰는 목적지·항공 노선·구조화된 입력값은 AI 호출 없이 로컬 데이터로 즉시 처리하고, 불확실한 정보만 AI로 보완합니다.
 - **지도 기반 동선 검증** — Google Maps 지오코딩/경로 API로 실제 좌표와 대중교통 이동시간을 확인하고, 하루 동선의 품질을 점수화합니다.
-- **부분 재생성** — 마음에 안 드는 하루 또는 개별 활동만 골라 "더 저렴하게 / 여유롭게 / 알차게" 다시 생성할 수 있습니다.
 - **저장·공유·내보내기** — Firebase에 일정을 저장하고, 공개 URL로 공유하거나 Google 캘린더 / `.ics`로 내보냅니다.
 
 ---
@@ -97,13 +96,9 @@
 
 ---
 
-## ✨ 일정 편집 & 부분 재생성
+## ✨ 일정 편집
 
-생성된 일정은 정적인 결과가 아니라 계속 다듬을 수 있습니다. `POST /api/regenerate-day`가 다음을 지원합니다.
-
-- **하루 통째로 재생성** — `balanced` / `cheaper`(더 저렴하게) / `relaxed`(더 여유롭게) / `fuller`(더 알차게) 모드
-- **개별 활동 교체** (`replace-activity`) — 앞뒤 동선과 시간대를 유지하면서 한 장소만 대안으로 교체
-- 재생성 결과도 즉시 지도 검증을 거쳐 좌표·이동시간이 반영됩니다.
+생성된 일정은 정적인 결과가 아니라 사용자가 직접 다듬을 수 있습니다. 일정 상세 화면에서 개별 활동을 확인하고, 편집 화면에서 활동 추가·수정·삭제·순서 변경을 지원합니다.
 
 ---
 
@@ -118,7 +113,7 @@ SPA 방식으로 `src/app/page.tsx`의 `currentScreen` 상태와 `?view=<screen>
 | **loading** | 에이전트 진행 상황 실시간 표시 |
 | **result** | 일정 / 지도 / 예산 3개 탭 뷰 + 동선 품질 요약 |
 | **detail** | 장소별 상세 정보 |
-| **edit** | 일정 편집 및 AI 재생성 |
+| **edit** | 일정 편집 |
 | **share** | 공개 URL 복사, Google 캘린더·`.ics` 내보내기 |
 | **mytrips** | 저장한 여행 목록 관리 |
 | **shared** | 공유 링크로 열람하는 읽기 전용 뷰어 |
@@ -156,7 +151,7 @@ SPA 방식으로 `src/app/page.tsx`의 `currentScreen` 상태와 `?view=<screen>
 - `userInput` — 여행 선호·항공·숙소·필수 방문지
 - `tripData` · `scheduleData` · `budgetData` — AI 생성 결과
 - `currentTripId` · `savedTrips` · `currentShareId` — 저장/공유 상태
-- `isGenerating` · `isRegeneratingSchedule` · `regeneratingDay` · `regeneratingActivityId` — 로딩 상태
+- `isGenerating` — 로딩 상태
 - 활동 편집 시 `buildBudgetFromSchedule()`가 예산 총액을 재계산합니다.
 
 ---
@@ -168,7 +163,6 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── plan-trip/route.ts             # 5-에이전트 파이프라인 (SSE)
-│   │   ├── regenerate-day/route.ts        # 하루/활동 부분 재생성
 │   │   └── recommend-destination/route.ts # AI 여행지 추천
 │   ├── layout.tsx
 │   └── page.tsx                           # SPA 라우팅 허브

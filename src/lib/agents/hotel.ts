@@ -118,7 +118,7 @@ export async function determineHotel(
 
     const data = JSON.parse(content);
     // AI가 price를 누락하거나 숫자가 아닌 값으로 반환하면 NaN이 예산 계산에 전파되어
-    // 항상 FAIL → 불필요한 일정 재생성이 발생하므로 반드시 숫자로 보정한다.
+    // 항상 FAIL → 불필요한 일정 재조정이 발생하므로 반드시 숫자로 보정한다.
     const pricePerNight =
       Number.isFinite(Number(data.price)) && Number(data.price) > 0 ? Number(data.price) : 200000;
     const validatedPlace = await geocodePlace(`${data.name}, ${intent.destination}`);

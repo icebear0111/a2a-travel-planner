@@ -168,13 +168,18 @@ export interface SavedTrip {
 /**
  * 여행 계획 저장
  */
+// Firestore는 undefined 값을 거부한다. 초기화 옵션(ignoreUndefinedProperties)에
+// 더해 쓰기 직전 JSON 직렬화로 undefined 필드를 확실히 제거한다 (이중 방어).
+// 주의: serverTimestamp() 같은 센티널은 직렬화가 깨뜨리므로 반드시 정제 후에 추가할 것.
+const stripUndefinedDeep = <T>(data: T): T => JSON.parse(JSON.stringify(data)) as T;
+
 export async function saveTrip(
   userId: string,
   data: Omit<SavedTrip, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
   const tripsRef = collection(db, 'users', userId, 'trips');
   const docRef = await addDoc(tripsRef, {
-    ...data,
+    ...stripUndefinedDeep(data),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -220,7 +225,7 @@ export async function updateTrip(
 ): Promise<void> {
   const tripRef = doc(db, 'users', userId, 'trips', tripId);
   await updateDoc(tripRef, {
-    ...data,
+    ...stripUndefinedDeep(data),
     updatedAt: serverTimestamp(),
   });
 }
@@ -250,7 +255,7 @@ export interface SharedTrip extends Omit<SavedTrip, 'id'> {
 export async function shareTrip(data: Omit<SharedTrip, 'id' | 'sharedAt'>): Promise<string> {
   const sharedTripsRef = collection(db, 'shared_trips');
   const docRef = await addDoc(sharedTripsRef, {
-    ...data,
+    ...stripUndefinedDeep(data),
     sharedAt: serverTimestamp(),
   });
   return docRef.id;

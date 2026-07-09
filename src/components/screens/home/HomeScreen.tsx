@@ -51,7 +51,7 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
   // null = 로딩 중 (스켈레톤 표시)
   const [recommendedCards, setRecommendedCards] = useState<RecommendedTripCard[] | null>(null);
 
-  const { setUserInput, loadSampleTrip } = useTripStore();
+  const { setUserInput, resetUserInput, loadSampleTrip } = useTripStore();
 
   // 실제 공유된 여행에서 추천 일정을 뽑는다 — 방문(새로고침)마다 랜덤 조합
   useEffect(() => {
@@ -121,27 +121,21 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
     }
   };
 
-  // AI 추천 여행지 선택 핸들러 — 여행지·국내/해외를 미리 채워 설정 플로우로 보낸다
+  // AI 추천 여행지 선택 핸들러 — 입력을 초기화한 뒤 여행지·국내/해외만 미리 채운다
   const handleSelectRecommendation = (destination: string) => {
     // 국가 정보 제거 (예: "오사카 (일본)" -> "오사카")
     const cleanDestination = destination.split('(')[0].trim();
+    resetUserInput();
     setUserInput({
       destination: cleanDestination,
       isDomestic: Boolean(getDomesticDestination(cleanDestination)),
-      travelMode: undefined,
-      useRentalCar: false,
     });
     onNavigate('setup');
   };
 
-  // 여행지 입력은 설정 플로우 첫 단계에서 진행 — 이전 여행 값만 초기화한다
+  // 새 여행 시작 — 이전에 입력하던 모든 값(여행지·항공·숙소·컨셉 등)을 초기화한다
   const handleStart = () => {
-    setUserInput({
-      destination: '',
-      isDomestic: undefined,
-      travelMode: undefined,
-      useRentalCar: false,
-    });
+    resetUserInput();
     onNavigate('setup');
   };
 

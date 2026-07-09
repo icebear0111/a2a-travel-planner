@@ -38,6 +38,32 @@ const emptyBudgetData: BudgetData = {
   dailyBudget: [],
 };
 
+// 새 여행 계획을 시작할 때의 기본 입력값 (항상 새 객체를 반환)
+const createInitialUserInput = (): UserInput => ({
+  destination: '',
+  mustVisitPlaces: [],
+  travelStyle: ['relaxed'],
+  useRentalCar: false,
+  flight: {
+    originAirportCode: '',
+    destAirportCode: '',
+    price: 0,
+    departureDate: '',
+    departureTime: '10:00',
+    returnDate: '',
+    returnTime: '18:00',
+  },
+  hotels: [
+    {
+      id: '1',
+      name: '',
+      price: 0,
+      checkIn: '',
+      checkOut: '',
+    },
+  ],
+});
+
 const removeActivityIcon = (activity: DaySchedule['activities'][0]) => {
   const cleanActivity = { ...activity };
   delete cleanActivity.icon;
@@ -245,6 +271,7 @@ interface ExtendedTripStoreState extends TripStoreState {
   deleteSavedTrip: (userId: string, tripId: string) => Promise<void>;
   persistCurrentTrip: (userId: string) => Promise<string | null>;
   resetTrip: () => void;
+  resetUserInput: () => void;
 
   // 공유 관련 액션
   shareTripAndGetUrl: (userName: string) => Promise<string | null>;
@@ -280,30 +307,7 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   isSharing: false,
   currentShareId: null,
 
-  userInput: {
-    destination: '',
-    mustVisitPlaces: [],
-    travelStyle: ['relaxed'],
-    useRentalCar: false,
-    flight: {
-      originAirportCode: '',
-      destAirportCode: '',
-      price: 0,
-      departureDate: '',
-      departureTime: '10:00',
-      returnDate: '',
-      returnTime: '18:00',
-    },
-    hotels: [
-      {
-        id: '1',
-        name: '',
-        price: 0,
-        checkIn: '',
-        checkOut: '',
-      },
-    ],
-  },
+  userInput: createInitialUserInput(),
 
   // 기본 액션 함수들
   setIsMobile: (mobile) => set({ isMobile: mobile }),
@@ -919,23 +923,11 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       currentShareId: null,
       selectedDay: 1,
       selectedActivityId: null,
-      userInput: {
-        destination: '',
-        mustVisitPlaces: [],
-        travelStyle: ['relaxed'],
-        useRentalCar: false,
-        flight: {
-          originAirportCode: '',
-          destAirportCode: '',
-          price: 0,
-          departureDate: '',
-          departureTime: '10:00',
-          returnDate: '',
-          returnTime: '18:00',
-        },
-        hotels: [{ id: '1', name: '', price: 0, checkIn: '', checkOut: '' }],
-      },
+      userInput: createInitialUserInput(),
     }),
+
+  // 새 여행 계획 시작 시 이전 검색·입력값을 모두 초기화한다
+  resetUserInput: () => set({ userInput: createInitialUserInput() }),
 
   // ============================================
   // 공유 관련 액션

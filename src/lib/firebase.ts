@@ -12,6 +12,8 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
+  Firestore,
   collection,
   doc,
   addDoc,
@@ -41,7 +43,17 @@ const firebaseConfig = {
 // Firebase 앱 초기화 (중복 방지)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Firestore는 undefined 필드를 거부하므로 무시 옵션을 켠다.
+// (userInput의 travelMode·isDomestic 등 optional 필드가 undefined인 채
+//  저장·공유되면 addDoc이 "Unsupported field value: undefined"로 실패한다)
+let db: Firestore;
+try {
+  db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+} catch {
+  // HMR 등으로 이미 초기화된 경우 기존 인스턴스를 사용한다
+  db = getFirestore(app);
+}
 
 // Google Provider
 const googleProvider = new GoogleAuthProvider();

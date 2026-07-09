@@ -45,24 +45,31 @@ const DEFAULT_FLIGHT = { duration: '3h 00m', code: 'NRT', price: 400000, airline
 // 테이블에 없는 국내 여행지(예: 평창)는 AI로 이동시간·비용·출발지를 추정한다
 const DOMESTIC_ESTIMATE_PROMPTS: Record<
   'flight' | 'train' | 'bus' | 'car',
-  { desc: string; labels?: string; defaultOrigin: string }
+  { desc: string; priceDesc: string; labels?: string; defaultOrigin: string }
 > = {
   flight: {
-    desc: '국내선 항공 (목적지에 공항이 없으면 가장 가까운 공항 기준)',
+    desc: '국내선 항공 (실제 운항 중인 노선만. 목적지에 공항이 없으면 가장 가까운 공항 기준)',
+    priceDesc: '왕복 이코노미 항공권',
     labels: ',"originLabel":"출발 공항 이름(코드)","destLabel":"목적지에서 가장 가까운 공항 이름(코드)"',
     defaultOrigin: '김포(GMP)',
   },
   train: {
-    desc: '기차 (KTX 우선, 가장 가까운 역 기준)',
+    desc: '기차 (실제 운행 노선 기준, KTX 우선, 가장 가까운 역 기준)',
+    priceDesc: '왕복 일반석 승차권',
     labels: ',"originLabel":"출발역","destLabel":"도착역"',
     defaultOrigin: '서울역',
   },
   bus: {
-    desc: '고속·시외버스 (가장 가까운 터미널 기준)',
+    desc: '고속·시외버스 (실제 운행 노선 기준, 가장 가까운 터미널 기준)',
+    priceDesc: '왕복 버스 요금',
     labels: ',"originLabel":"출발 터미널","destLabel":"도착 터미널"',
     defaultOrigin: '서울고속버스터미널',
   },
-  car: { desc: '자동차', defaultOrigin: '서울' },
+  car: {
+    desc: '자동차 (고속도로 기준 실주행)',
+    priceDesc: '왕복 유류비+통행료 합계',
+    defaultOrigin: '서울',
+  },
 };
 
 async function estimateDomesticTransport(
@@ -79,7 +86,8 @@ async function estimateDomesticTransport(
       messages: [
         {
           role: 'system',
-          content: `한국 국내 이동 정보 전문가입니다. 서울에서 목적지까지의 ${promptInfo.desc} 이동 정보를 현실적으로 추정하세요.
+          content: `한국 국내 이동 정보 전문가입니다. 서울에서 목적지까지의 ${promptInfo.desc} 이동 정보를 2026년 기준으로 현실적으로 추정하세요.
+실제 존재하는 공항·역·터미널 이름만 사용하고, price는 ${promptInfo.priceDesc}(1인 기준, KRW)입니다.
 
 ## 출력 (JSON)
 {"duration":"Xh Ym 형식 편도 소요시간","price":왕복 비용 KRW 숫자${promptInfo.labels || ''}}`,
@@ -273,13 +281,13 @@ export async function determineFlightConstraints(
       messages: [
         {
           role: 'system',
-          content: `당신은 항공편 분석 전문가입니다.
+          content: `당신은 항공편 분석 전문가입니다. 실제 취항 정보를 기준으로 답하세요.
 
 ## 분석 항목
-1. **destAirportCode**: 목적지 주요 국제공항 IATA 코드
-2. **flightDuration**: 직항 기준 비행시간 (예: "2h 30m")
-3. **price**: 왕복 이코노미 예상가 (KRW, 현실적인 가격)
-4. **airline**: 해당 노선 대표 항공사
+1. **destAirportCode**: 목적지에서 여행자가 실제 이용할 주요 국제공항의 IATA 코드
+2. **flightDuration**: 직항 기준 비행시간 (예: "2h 30m"). 직항이 없는 노선이면 일반적인 1회 경유 기준 총 소요시간
+3. **price**: 왕복 이코노미 예상가 (KRW, 1인, 유류할증료·세금 포함한 2026년 현실적인 평균가)
+4. **airline**: 해당 노선에 실제 취항 중인 대표 항공사
 
 ## 출력 (JSON)
 {"flightDuration":"string","destAirportCode":"string","price":number,"airline":"string"}`,
@@ -288,6 +296,7 @@ export async function determineFlightConstraints(
           role: 'user',
           content: `출발: ${userFlight.originAirportCode || 'ICN'} (서울)
 도착: ${intent.destination}
+출발 시기: ${intent.startDate}
 기간: ${intent.duration}일`,
         },
       ],

@@ -1,7 +1,7 @@
-import { Intent } from './intent';
-import { FlightContext } from './flight';
-import { HotelContext } from './hotel';
-import { DayItinerary } from './route';
+import type { Intent } from './intent';
+import type { FlightContext } from './flight';
+import type { HotelContext } from './hotel';
+import type { DayItinerary } from './route';
 
 export interface BudgetResult {
   status: 'PASS' | 'FAIL';
@@ -16,7 +16,8 @@ export interface BudgetResult {
   suggestion?: { target: 'HOTEL' | 'ROUTE'; reason: string };
 }
 
-const BUDGET_LIMITS: Record<
+// route 에이전트가 일정 생성 시 하루 활동비 가이드로도 사용한다 (사전 예방이 사후 재조정보다 저렴)
+export const BUDGET_LIMITS: Record<
   Intent['budgetLevel'],
   { hotelPerNight: number; activityPerDay: number }
 > = {

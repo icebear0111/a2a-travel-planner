@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { Intent } from './intent';
 import { FlightContext } from './flight';
 import { HotelContext } from './hotel';
+import { BUDGET_LIMITS } from './budget';
 import { DRIVE_TRIP_PROMPT, formatTravelStyleForPrompt } from '@/lib/utils/travelStyle';
 
 export interface AgentSuggestion {
@@ -61,6 +62,20 @@ export function assignMustVisitPlaces(
   });
 
   return assignment;
+}
+
+// 해당 일차의 실제 달력 날짜·요일을 구한다 — 요일(휴관일·혼잡도)과 계절을 프롬프트에 반영하기 위함.
+// startDate("YYYY-MM-DD")는 UTC 자정으로 파싱되므로 요일도 UTC 기준으로 읽어야 서버 타임존과 무관하게 정확하다.
+function resolveDayDate(startDate: string, dayNumber: number) {
+  const date = new Date(startDate);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + (dayNumber - 1));
+
+  const month = date.getUTCMonth() + 1;
+  const season = month >= 3 && month <= 5 ? '봄' : month >= 6 && month <= 8 ? '여름' : month >= 9 && month <= 11 ? '가을' : '겨울';
+  const weekday = date.toLocaleDateString('ko-KR', { weekday: 'long', timeZone: 'UTC' });
+
+  return { label: `${date.toISOString().split('T')[0]} (${weekday})`, season, weekday };
 }
 
 const normalizePlaceKey = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
@@ -137,6 +152,9 @@ export async function generateDayItinerary(
   const isFirstDay = dayNumber === 1;
   const isLastDay = dayNumber === totalDays;
   const stylePrompt = formatTravelStyleForPrompt(intent);
+  const dayDate = resolveDayDate(intent.startDate, dayNumber);
+  const dailyActivityBudget = (BUDGET_LIMITS[intent.budgetLevel] || BUDGET_LIMITS.MEDIUM)
+    .activityPerDay;
 
   const travelMode = flight.mode || 'flight';
   const isDomestic = Boolean(intent.isDomestic);
@@ -261,9 +279,10 @@ export async function generateDayItinerary(
     } else {
       daySpecificInstructions = `
             [CRITICAL - LAST DAY LOGISTICS]
+- **The traveler is ALREADY in ${intent.destination}. The ONLY flight today is the RETURN flight at ${flight.returnTime}, and it MUST be the LAST activity of the day. NEVER place a flight at the start of the day and NEVER reuse the outbound time ${flight.departureTime}.**
 - Morning: Hotel checkout or luggage storage.
-- Schedule light activities near the airport or central area.
-- **Schedule "Travel to Airport" 2.5 hours before the flight time.**
+- Schedule light activities near the airport or central area, ending in time for the airport transfer.
+- **Schedule "공항으로 이동" (Type: 'transport') 2.5 hours before the return flight time.**
             - **Final Activity MUST be FLIGHT DEPARTURE from Destination.**
               - Time: ${flight.returnTime}
               - Type: 'flight'
@@ -299,18 +318,40 @@ export async function generateDayItinerary(
       {
         role: 'system',
         content: `
-You are an expert travel route optimizer focusing on a "Relaxed & Efficient" experience.
-Create a highly realistic, minute-by-minute itinerary for **Day ${dayNumber} of ${totalDays}**.
+You are a senior travel planner who designs realistic, on-the-ground daily itineraries that travelers can actually follow.
+Create the itinerary for **Day ${dayNumber} of ${totalDays}** in ${intent.destination}.${
+          dayDate
+            ? `
+This day is **${dayDate.label}**, in ${dayDate.season} season.`
+            : ''
+        }
 
 [MANDATORY FORMAT]
-1. Response strictly JSON.
+1. Response strictly JSON (structure at the end).
 2. LANGUAGE: **KOREAN** (Title & Desc).
 3. Types: 'flight', 'transport', 'hotel', 'sightseeing', 'food', 'shopping', 'coffee', 'theme', 'etc'.
-4. Price: Estimated KRW.
-5. **Location**: Specific City or Area name for Google Maps search (e.g., "Kyoto", "Umeda, Osaka").
+   Meals = 'food', cafes/desserts = 'coffee'. Pick the closest type.
+4. **Price**: realistic per-person KRW as of 2026. Use 0 for free places. 'food' price = expected meal cost per person.
+5. **Location**: Specific City or Area name for Google Maps search (국내: "속초, 강원도" / 해외: "Umeda, Osaka").
 6. For the last plan of each day, when returning to the hotel, don't use the word "귀환". Use "호텔 이동: ${hotel.name}" instead.
-7. For each desc only use keywords.
+7. **Desc**: ONE short Korean sentence — what makes this stop worth it plus one practical tip
+   (대표 메뉴, 예약 필요 여부, 휴무 요일, 덜 붐비는 시간대, 야경 포인트 등). No generic filler.
 8. **id format**: "d${dayNumber}-[sequence]" (e.g., "d${dayNumber}-1", "d${dayNumber}-2", ...)
+
+[REALITY CHECK - VERY IMPORTANT]
+- Only include REAL places that exist and are currently operating. NEVER invent a place name.
+- Respect opening hours and closure days${dayDate ? ` for a ${dayDate.weekday} visit` : ''}
+  (many museums/palaces close on Mondays, some markets close on specific weekdays — pick alternatives if closed).
+- Times must be chronological with NO overlaps; durations realistic (major spot 1.5h~2h, meal 1h~1.5h)
+  and leave sensible gaps for moving between places.${
+    dayDate
+      ? `
+- Fit the ${dayDate.season} season: in summer avoid long midday outdoor walks, in winter keep outdoor stops short
+  and prefer indoor alternatives; use seasonal highlights (벚꽃, 단풍, 눈 축제 등) when the timing matches.`
+      : ''
+  }
+- Budget level is ${intent.budgetLevel}: keep the sum of today's activity/food/transport prices
+  (excluding flight & hotel) around ${dailyActivityBudget.toLocaleString()} KRW or less.
 
             [CRITICAL - GEOGRAPHIC CLUSTERING]
             - **ONE DAY = ONE AREA**: Minimize travel time. Do NOT zig-zag across the city.
@@ -320,7 +361,7 @@ Create a highly realistic, minute-by-minute itinerary for **Day ${dayNumber} of 
             - **NO REPEATS ACROSS DAYS**: This is one day of a ${totalDays}-day trip planned in parallel.
               Never schedule an attraction reserved for another day (listed below), and pick spots
               distinctive to today's area so days don't overlap.
-            
+
 ${daySpecificInstructions}
 
 ${budgetAdjustmentInstruction}
@@ -349,10 +390,10 @@ ${stylePrompt}${driveInstruction}
         content: `
             User Request Overview:
             - Destination: ${intent.destination}
-- Day: ${dayNumber} of ${totalDays}
+- Day: ${dayNumber} of ${totalDays}${dayDate ? ` — ${dayDate.label}` : ''}
             - Themes: ${intent.themes.join(', ')}
-            - Companion: ${intent.companion}
             - Travel Concept: ${intent.travelStyle?.join(', ') || 'balanced'}
+            - Budget Level: ${intent.budgetLevel} (daily activity budget ≈ ${dailyActivityBudget.toLocaleString()} KRW)
 
             Basecamp (Hotel):
             - Name: ${hotel.name}
@@ -379,8 +420,8 @@ ${
 }
 
             Instruction:
-Create a well-structured Day ${dayNumber} itinerary. Cluster activities by location. Make it relaxed but fulfilling.
-Follow the user travel concept above as the main planning rule.
+Create a well-structured Day ${dayNumber} itinerary. Cluster activities by location and keep every stop real and open on this weekday.
+Follow the user travel concept above as the main planning rule — it decides the day's pace and what kinds of stops to prioritize.
 ${
   assignedMustVisit && assignedMustVisit.length > 0
     ? '**IMPORTANT**: Today MUST include every place assigned to this day. Build the day\'s route around them and allocate enough time (a theme park deserves most of the day).'

@@ -82,33 +82,32 @@ export async function determineHotel(
       messages: [
         {
           role: 'system',
-          content: `당신은 숙소 추천 전문가입니다.
+          content: `당신은 여행 일정에 맞는 숙소를 고르는 전문가입니다. 이 숙소는 매일 일정의 출발점(베이스캠프)이 되므로 위치가 가장 중요합니다.
 
 ## 추천 기준
-1. **위치**: 관광 명소 접근성, 대중교통 편리한 중심가
+1. **위치**: 주요 관광지·맛집 접근성이 좋은 중심가. 대표 관광 동선의 한가운데 또는 교통 요지.
 2. **예산 (1박 기준 KRW)**:
    - LOW: 8~15만원
    - MEDIUM: 15~30만원
    - HIGH: 35만원+
-3. **동행 타입**:
-   - 가족: 넓은 방, 안전한 동네
-   - 커플: 로맨틱, 좋은 뷰
-   - 친구: 번화가, 접근성
-   - 혼자: 가성비, 역세권
+3. **여행 컨셉 반영**: 자연/힐링이면 조용하고 전망 좋은 곳, 맛집 중심이면 먹자골목·시장 접근성, 쇼핑이면 주요 상권 도보권.
+4. **국내 여행**이면 호텔 외에 실제 운영 중인 리조트·프리미엄 펜션도 후보로 고려.
 
 ## 중요
-- 실제 존재하는 호텔 추천
-- 정확한 좌표 제공
+- 반드시 실제 존재하고 현재 운영 중인 숙소의 정확한 실명을 사용 (폐업·가상의 숙소 금지)
+- 정확한 좌표와 실제 주소 제공
+- price는 2026년 기준 현실적인 1박 요금
 
 ## 출력 (JSON)
-{"name":"호텔명","address":"주소","price":1박가격,"rating":"평점","coordinate":{"lat":number,"lng":number}}`,
+{"name":"숙소명","address":"주소","price":1박가격,"rating":"평점","coordinate":{"lat":number,"lng":number}}`,
         },
         {
           role: 'user',
-          content: `목적지: ${intent.destination}
+          content: `목적지: ${intent.destination}${intent.isDomestic ? ' (국내 여행)' : ''}
 예산: ${intent.budgetLevel}
-동행: ${intent.companion}
-기간: ${intent.duration}일`,
+기간: ${intent.duration}일 (${Math.max(1, intent.duration - 1)}박)
+여행 테마: ${intent.themes.join(', ')}
+여행 컨셉: ${intent.travelStyle?.join(', ') || '균형'}`,
         },
       ],
     });

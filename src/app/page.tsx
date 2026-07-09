@@ -30,15 +30,22 @@ export default function Home() {
   // ==================================================================
 
   // (1) 화면 이동 함수
-  const navigateTo = (screen: string) => {
+  const navigateTo = (screen: string, options?: { sharedId?: string }) => {
     // 로딩 화면은 히스토리에 남기지 않음 (중간 과정이므로)
     if (screen === 'loading') {
       setCurrentScreen(screen);
       return;
     }
 
-    // 홈이 아닌 다른 화면으로 갈 때만 히스토리 쌓기
-    if (screen !== 'home') {
+    // 공유 여행 뷰는 어떤 여행인지(id)까지 URL·히스토리에 담는다
+    if (screen === 'shared' && options?.sharedId) {
+      setSharedTripId(options.sharedId);
+      window.history.pushState(
+        { screen, sharedId: options.sharedId },
+        '',
+        `?view=shared&id=${options.sharedId}`
+      );
+    } else if (screen !== 'home') {
       window.history.pushState({ screen }, '', `?view=${screen}`);
     } else {
       window.history.pushState({ screen: 'home' }, '', '/');
@@ -51,6 +58,9 @@ export default function Home() {
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       const targetScreen = event.state?.screen || 'home';
+      if (event.state?.sharedId) {
+        setSharedTripId(event.state.sharedId);
+      }
       setCurrentScreen(targetScreen);
     };
 
@@ -91,7 +101,7 @@ export default function Home() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
-        return <HomeScreen isMobile={localIsMobile} onNavigate={(screen) => navigateTo(screen)} />;
+        return <HomeScreen isMobile={localIsMobile} onNavigate={navigateTo} />;
 
       case 'setup':
         return (

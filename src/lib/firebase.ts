@@ -22,6 +22,7 @@ import {
   deleteDoc,
   query,
   orderBy,
+  limit,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -256,6 +257,23 @@ export async function getSharedTrip(shareId: string): Promise<SharedTrip | null>
     id: snapshot.id,
     ...snapshot.data(),
   } as SharedTrip;
+}
+
+/**
+ * 최근 공유된 여행 목록 (홈 화면 추천용, 누구나 접근 가능)
+ */
+export async function getRecentSharedTrips(count = 12): Promise<SharedTrip[]> {
+  const sharedTripsRef = collection(db, 'shared_trips');
+  const recentQuery = query(sharedTripsRef, orderBy('sharedAt', 'desc'), limit(count));
+  const snapshot = await getDocs(recentQuery);
+
+  return snapshot.docs.map(
+    (docSnap) =>
+      ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }) as SharedTrip
+  );
 }
 
 // 타입 내보내기

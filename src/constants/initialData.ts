@@ -117,11 +117,7 @@ const tokyoSampleTrip: SampleTrip = {
   },
   userInput: {
     destination: '도쿄',
-    travelStyle: 'culture',
-    travelKeywords: ['food', 'shopping'],
-    pace: 'balanced',
-    budgetPreference: 'balanced',
-    transportPreference: 'public',
+    travelStyle: ['culture', 'food', 'shopping'],
     flight: {
       originAirportCode: 'ICN',
       destAirportCode: 'NRT',
@@ -216,11 +212,7 @@ const bangkokSampleTrip: SampleTrip = {
   },
   userInput: {
     destination: '방콕',
-    travelStyle: 'food',
-    travelKeywords: ['culture', 'shopping'],
-    pace: 'packed',
-    budgetPreference: 'budget',
-    transportPreference: 'public',
+    travelStyle: ['food', 'culture', 'shopping'],
     flight: {
       originAirportCode: 'ICN',
       destAirportCode: 'BKK',

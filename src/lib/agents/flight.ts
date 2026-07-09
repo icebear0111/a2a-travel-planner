@@ -1,12 +1,18 @@
 import OpenAI from 'openai';
 import { Intent, UserInput } from './intent';
+import { DOMESTIC_DESTINATIONS } from '@/constants/destinations';
 
 export interface FlightContext {
+  /** 목적지까지 이동수단 (해외는 항상 flight) */
+  mode: 'flight' | 'train' | 'bus' | 'car';
   departureTime: string;
   returnTime: string;
   price: number;
+  /** 출발지 라벨 — 공항 코드, 기차역 이름, 또는 출발 도시 */
   originAirportCode: string;
+  /** 도착지 라벨 — 공항 코드, 기차역 이름, 또는 목적지 */
   destAirportCode: string;
+  /** 운송 수단 라벨 — 항공사, 열차명, '자차·렌터카' */
   airline: string;
   flightDuration: string;
 }
@@ -36,11 +42,203 @@ const FALLBACK_ROUTES: Record<
 
 const DEFAULT_FLIGHT = { duration: '3h 00m', code: 'NRT', price: 400000, airline: '대한항공' };
 
+// 테이블에 없는 국내 여행지(예: 평창)는 AI로 이동시간·비용·출발지를 추정한다
+const DOMESTIC_ESTIMATE_PROMPTS: Record<
+  'flight' | 'train' | 'bus' | 'car',
+  { desc: string; labels?: string; defaultOrigin: string }
+> = {
+  flight: {
+    desc: '국내선 항공 (목적지에 공항이 없으면 가장 가까운 공항 기준)',
+    labels: ',"originLabel":"출발 공항 이름(코드)","destLabel":"목적지에서 가장 가까운 공항 이름(코드)"',
+    defaultOrigin: '김포(GMP)',
+  },
+  train: {
+    desc: '기차 (KTX 우선, 가장 가까운 역 기준)',
+    labels: ',"originLabel":"출발역","destLabel":"도착역"',
+    defaultOrigin: '서울역',
+  },
+  bus: {
+    desc: '고속·시외버스 (가장 가까운 터미널 기준)',
+    labels: ',"originLabel":"출발 터미널","destLabel":"도착 터미널"',
+    defaultOrigin: '서울고속버스터미널',
+  },
+  car: { desc: '자동차', defaultOrigin: '서울' },
+};
+
+async function estimateDomesticTransport(
+  destination: string,
+  mode: 'flight' | 'train' | 'bus' | 'car'
+): Promise<{ duration: string; price: number; originLabel: string; destLabel: string } | null> {
+  const promptInfo = DOMESTIC_ESTIMATE_PROMPTS[mode];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.4-mini',
+      reasoning_effort: 'none',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `한국 국내 이동 정보 전문가입니다. 서울에서 목적지까지의 ${promptInfo.desc} 이동 정보를 현실적으로 추정하세요.
+
+## 출력 (JSON)
+{"duration":"Xh Ym 형식 편도 소요시간","price":왕복 비용 KRW 숫자${promptInfo.labels || ''}}`,
+        },
+        { role: 'user', content: `서울 → ${destination}` },
+      ],
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) return null;
+    const data = JSON.parse(content);
+    if (!data.duration || !Number.isFinite(Number(data.price))) return null;
+
+    return {
+      duration: data.duration,
+      price: Number(data.price),
+      originLabel: data.originLabel || promptInfo.defaultOrigin,
+      destLabel: data.destLabel || destination,
+    };
+  } catch (error) {
+    console.error('❌ [2-Flight] 국내 이동 추정 실패:', error);
+    return null;
+  }
+}
+
+// 국내여행: 목적지 테이블 기반으로 항공/기차/자차 교통편을 구성하고,
+// 테이블에 없는 여행지는 AI 추정으로 보완한다.
+async function buildDomesticTransport(intent: Intent, input: UserInput): Promise<FlightContext> {
+  const info = DOMESTIC_DESTINATIONS[intent.destination];
+  const mode = intent.travelMode || 'car';
+  const departureTime = input.flight.departureTime || '09:00';
+  const returnTime = input.flight.returnTime || '18:00';
+  const userPrice = input.flight.price;
+
+  if (mode === 'flight') {
+    if (info?.flight) {
+      console.log(`✅ [2-Flight] 국내선: ${info.flight.originCode} → ${info.flight.destCode}`);
+      return {
+        mode,
+        departureTime,
+        returnTime,
+        price: userPrice || info.flight.price,
+        originAirportCode: input.flight.originAirportCode || info.flight.originCode,
+        destAirportCode: input.flight.destAirportCode || info.flight.destCode,
+        airline: info.flight.airline,
+        flightDuration: info.flight.duration,
+      };
+    }
+
+    const estimated = await estimateDomesticTransport(intent.destination, 'flight');
+    if (estimated) {
+      console.log(
+        `✅ [2-Flight] 국내선 (AI 추정): ${estimated.originLabel} → ${estimated.destLabel}`
+      );
+      return {
+        mode,
+        departureTime,
+        returnTime,
+        price: userPrice || estimated.price,
+        originAirportCode: estimated.originLabel,
+        destAirportCode: estimated.destLabel,
+        airline: '국내선',
+        flightDuration: estimated.duration,
+      };
+    }
+  }
+
+  if (mode === 'train') {
+    if (info?.train) {
+      console.log(`✅ [2-Flight] 기차: ${info.train.originStation} → ${info.train.destStation}`);
+      return {
+        mode,
+        departureTime,
+        returnTime,
+        price: userPrice || info.train.price,
+        originAirportCode: info.train.originStation,
+        destAirportCode: info.train.destStation,
+        airline: info.train.trainName,
+        flightDuration: info.train.duration,
+      };
+    }
+
+    const estimated = await estimateDomesticTransport(intent.destination, 'train');
+    if (estimated) {
+      console.log(`✅ [2-Flight] 기차 (AI 추정): ${estimated.originLabel} → ${estimated.destLabel}`);
+      return {
+        mode,
+        departureTime,
+        returnTime,
+        price: userPrice || estimated.price,
+        originAirportCode: estimated.originLabel,
+        destAirportCode: estimated.destLabel,
+        airline: '기차',
+        flightDuration: estimated.duration,
+      };
+    }
+  }
+
+  if (mode === 'bus') {
+    if (info?.bus) {
+      console.log(`✅ [2-Flight] 버스: ${info.bus.originTerminal} → ${info.bus.destTerminal}`);
+      return {
+        mode,
+        departureTime,
+        returnTime,
+        price: userPrice || info.bus.price,
+        originAirportCode: info.bus.originTerminal,
+        destAirportCode: info.bus.destTerminal,
+        airline: '고속버스',
+        flightDuration: info.bus.duration,
+      };
+    }
+
+    const estimated = await estimateDomesticTransport(intent.destination, 'bus');
+    if (estimated) {
+      console.log(`✅ [2-Flight] 버스 (AI 추정): ${estimated.originLabel} → ${estimated.destLabel}`);
+      return {
+        mode,
+        departureTime,
+        returnTime,
+        price: userPrice || estimated.price,
+        originAirportCode: estimated.originLabel,
+        destAirportCode: estimated.destLabel,
+        airline: '고속버스',
+        flightDuration: estimated.duration,
+      };
+    }
+  }
+
+  // 자차·렌터카 (또는 위 수단 구성 실패 시의 폴백)
+  const knownDrive = info?.drive;
+  const estimatedDrive = knownDrive
+    ? null
+    : await estimateDomesticTransport(intent.destination, 'car');
+  console.log(
+    `✅ [2-Flight] 자차·렌터카: 서울 → ${intent.destination}${estimatedDrive ? ' (AI 추정)' : ''}`
+  );
+  return {
+    mode: 'car',
+    departureTime,
+    returnTime,
+    price: userPrice || knownDrive?.cost || estimatedDrive?.price || 100000,
+    originAirportCode: '서울',
+    destAirportCode: intent.destination,
+    airline: '자차·렌터카',
+    flightDuration: knownDrive?.duration || estimatedDrive?.duration || '3h 00m',
+  };
+}
+
 export async function determineFlightConstraints(
   intent: Intent,
   input: UserInput
 ): Promise<FlightContext> {
-  console.log(`✈️ [2-Flight] ${intent.destination} 항공편 분석 중...`);
+  console.log(`✈️ [2-Flight] ${intent.destination} 교통편 분석 중...`);
+
+  // 국내여행은 로컬 테이블로 즉시 구성한다.
+  if (intent.isDomestic) {
+    return buildDomesticTransport(intent, input);
+  }
 
   const userFlight = input.flight;
   const takeoffTime = userFlight.departureTime || '10:00';
@@ -54,6 +252,7 @@ export async function determineFlightConstraints(
     console.log(`✅ [2-Flight] 로컬 노선 정보 사용: ${userFlight.destAirportCode || route.code}`);
 
     return {
+      mode: 'flight',
       departureTime: takeoffTime,
       returnTime: returnTakeoffTime,
       price: userFlight.price || route.price,
@@ -105,6 +304,7 @@ export async function determineFlightConstraints(
     );
 
     return {
+      mode: 'flight',
       departureTime: takeoffTime,
       returnTime: returnTakeoffTime,
       price: data.price || 300000,
@@ -119,6 +319,7 @@ export async function determineFlightConstraints(
     const fallback = FALLBACK_ROUTES[intent.destination] || DEFAULT_FLIGHT;
 
     return {
+      mode: 'flight',
       departureTime: takeoffTime,
       returnTime: returnTakeoffTime,
       price: fallback.price,

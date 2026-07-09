@@ -16,17 +16,17 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
+  Globe2,
+  Search,
+  Car,
+  Check,
 } from 'lucide-react';
 import { useTripStore } from '@/stores/tripStore';
 import Header from '@/components/ui/Header';
 import FlightSection from './FlightSection';
 import HotelSection from './HotelSection';
-import {
-  BUDGET_PREFERENCE_OPTIONS,
-  TRANSPORT_PREFERENCE_OPTIONS,
-  TRAVEL_PACE_OPTIONS,
-  TRAVEL_STYLE_OPTIONS,
-} from '@/lib/utils/travelStyle';
+import { TRAVEL_STYLE_OPTIONS } from '@/lib/utils/travelStyle';
+import { getDefaultTravelMode, getDomesticDestination } from '@/constants/destinations';
 
 interface SetupScreenProps {
   onBack: () => void;
@@ -34,14 +34,24 @@ interface SetupScreenProps {
   onNavigate: (screen: string) => void;
 }
 
-type Step = 'dates' | 'flight' | 'hotel' | 'style' | 'places';
+type Step = 'destination' | 'dates' | 'flight' | 'hotel' | 'style' | 'places';
 
-const STEPS: Step[] = ['dates', 'flight', 'hotel', 'style', 'places'];
+const STEPS: Step[] = ['destination', 'dates', 'flight', 'hotel', 'style', 'places'];
+
+// 여행 유형별 인기 여행지 (빠른 선택용)
+const POPULAR_DOMESTIC_DESTINATIONS = ['제주', '부산', '강릉', '속초', '경주', '전주', '여수'];
+const POPULAR_OVERSEAS_DESTINATIONS = ['도쿄', '오사카', '후쿠오카', '방콕', '다낭', '파리'];
 
 const STEP_INFO: Record<
   Step,
   { icon: React.ReactNode; label: string; title: string; subtitle: string }
 > = {
+  destination: {
+    icon: <Globe2 className="w-5 h-5" />,
+    label: '여행지',
+    title: '어디로 떠나시나요?',
+    subtitle: '여행 유형을 고르고 여행지를 알려주세요',
+  },
   dates: {
     icon: <Calendar className="w-5 h-5" />,
     label: '날짜',
@@ -397,7 +407,7 @@ function InlineCalendar({
 export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenProps) {
   const { userInput, setFlightInput, setUserInput, generateTrip } = useTripStore();
 
-  const [currentStep, setCurrentStep] = useState<Step>('dates');
+  const [currentStep, setCurrentStep] = useState<Step>('destination');
   const [isAnimating, setIsAnimating] = useState(false);
   const [animationDirection, setAnimationDirection] = useState<'enter' | 'exit'>('enter');
 
@@ -410,9 +420,27 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
 
   const duration = calculateDuration(departureDate, returnDate);
   const currentStepIndex = STEPS.indexOf(currentStep);
-  const stepInfo = STEP_INFO[currentStep];
+  // 국내/해외: 사용자가 확인한 값 우선, 미확인이면 여행지 테이블로 자동 추정
+  const isDomesticTrip = userInput.isDomestic ?? Boolean(getDomesticDestination(userInput.destination));
+  // 현재 유효한 이동수단 (자차 국내여행이면 렌터카 선택이 무의미)
+  const domesticInfo = getDomesticDestination(userInput.destination);
+  const effectiveTravelMode = !isDomesticTrip
+    ? 'flight'
+    : userInput.travelMode || (domesticInfo ? getDefaultTravelMode(domesticInfo.info) : 'car');
+  // 국내여행은 항공편 단계가 '이동 수단' 선택으로 바뀐다
+  const stepInfo =
+    currentStep === 'flight' && isDomesticTrip
+      ? {
+          ...STEP_INFO.flight,
+          label: '이동',
+          title: '어떻게 이동하시나요?',
+          subtitle: '목적지까지의 이동수단을 선택해주세요',
+        }
+      : STEP_INFO[currentStep];
   const isLastStep = currentStepIndex === STEPS.length - 1;
   const isFlightComplete =
+    // 국내여행은 노선·비용이 자동 추정되므로 시간 미입력도 허용한다
+    isDomesticTrip ||
     isFlightUndecided ||
     Boolean(
       userInput.flight.originAirportCode &&
@@ -427,13 +455,15 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
         (hotel) => hotel.name.trim() && hotel.checkIn && hotel.checkOut
       ));
   const isCurrentStepComplete =
-    currentStep === 'dates'
-      ? Boolean(departureDate && returnDate && duration >= 1)
-      : currentStep === 'flight'
-        ? isFlightComplete
-        : currentStep === 'hotel'
-          ? isHotelComplete
-          : true;
+    currentStep === 'destination'
+      ? Boolean(userInput.destination.trim()) && userInput.isDomestic !== undefined
+      : currentStep === 'dates'
+        ? Boolean(departureDate && returnDate && duration >= 1)
+        : currentStep === 'flight'
+          ? isFlightComplete
+          : currentStep === 'hotel'
+            ? isHotelComplete
+            : true;
   const isNextDisabled = isAnimating || !isCurrentStepComplete;
 
   // 애니메이션
@@ -449,6 +479,17 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
 
   const goNext = () => {
     if (isAnimating) return;
+
+    if (currentStep === 'destination') {
+      if (!userInput.destination.trim()) {
+        alert('여행지를 입력해주세요.');
+        return;
+      }
+      if (userInput.isDomestic === undefined) {
+        alert('국내 여행인지 해외 여행인지 선택해주세요.');
+        return;
+      }
+    }
 
     if (currentStep === 'dates') {
       if (!departureDate || !returnDate) {
@@ -524,14 +565,15 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
     updated[index] = value;
     setMustVisitPlaces(updated);
   };
-  const toggleTravelKeyword = (keyword: string) => {
-    const currentKeywords = userInput.travelKeywords || [];
-    const isSelected = currentKeywords.includes(keyword);
-    const nextKeywords = isSelected
-      ? currentKeywords.filter((item) => item !== keyword)
-      : [...currentKeywords, keyword].slice(0, 3);
+  // 여행 컨셉 다중 선택 (최대 3개)
+  const toggleTravelStyle = (styleId: string) => {
+    const current = userInput.travelStyle || [];
+    const isSelected = current.includes(styleId);
+    const next = isSelected
+      ? current.filter((item) => item !== styleId)
+      : [...current, styleId].slice(0, 3);
 
-    setUserInput({ travelKeywords: nextKeywords });
+    setUserInput({ travelStyle: next });
   };
 
   const contentAnimationClass = isAnimating
@@ -559,6 +601,100 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
 
           {/* 컨텐츠 */}
           <div className="relative">
+            {currentStep === 'destination' && (
+              <div className="w-full max-w-2xl mx-auto">
+                {/* 여행 유형 선택 */}
+                <div className="grid grid-cols-2 gap-4 mb-8">
+                  {(
+                    [
+                      {
+                        value: true,
+                        emoji: '🚗',
+                        label: '국내 여행',
+                        desc: '자차·KTX·버스·국내선으로 떠나요',
+                      },
+                      {
+                        value: false,
+                        emoji: '✈️',
+                        label: '해외 여행',
+                        desc: '항공편으로 떠나는 여행',
+                      },
+                    ] as const
+                  ).map(({ value, emoji, label, desc }) => (
+                    <button
+                      key={String(value)}
+                      type="button"
+                      onClick={() => setUserInput({ isDomestic: value, travelMode: undefined })}
+                      className={`flex flex-col items-center gap-2 rounded-3xl border-2 px-6 py-8 transition-all ${
+                        userInput.isDomestic === value
+                          ? 'border-black bg-black text-white shadow-xl'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                      }`}
+                    >
+                      <span className="text-4xl">{emoji}</span>
+                      <span className="text-lg font-bold">{label}</span>
+                      <span
+                        className={`text-xs ${
+                          userInput.isDomestic === value ? 'text-white/70' : 'text-slate-400'
+                        }`}
+                      >
+                        {desc}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* 여행지 입력 */}
+                <div className="relative mb-4">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={userInput.destination}
+                    onChange={(e) =>
+                      setUserInput({ destination: e.target.value, travelMode: undefined })
+                    }
+                    onKeyDown={(e) => {
+                      // 여행지 입력 후 Enter로 바로 다음 단계 진행
+                      if (e.key === 'Enter' && isCurrentStepComplete) {
+                        goNext();
+                      }
+                    }}
+                    placeholder={
+                      userInput.isDomestic === undefined
+                        ? '여행지를 입력해주세요'
+                        : userInput.isDomestic
+                          ? '어디로 떠나시나요? (예: 평창, 강릉)'
+                          : '어디로 떠나시나요? (예: 도쿄, 파리)'
+                    }
+                    className="w-full h-16 pl-14 pr-5 bg-white border border-slate-200 rounded-2xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all font-medium text-lg hover:border-slate-300"
+                  />
+                </div>
+
+                {/* 인기 여행지 빠른 선택 */}
+                {userInput.isDomestic !== undefined && (
+                  <div className="flex flex-wrap gap-2 animate-fadeInUp">
+                    {(userInput.isDomestic
+                      ? POPULAR_DOMESTIC_DESTINATIONS
+                      : POPULAR_OVERSEAS_DESTINATIONS
+                    ).map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setUserInput({ destination: name, travelMode: undefined })}
+                        className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
+                          userInput.destination === name
+                            ? 'border-black bg-black text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {currentStep === 'dates' && (
               <InlineCalendar
                 departureDate={departureDate}
@@ -589,31 +725,26 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
                 <section>
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-xl font-bold text-slate-900">대표 컨셉</h2>
-                      <p className="text-sm text-slate-500">가장 중요한 여행 방향 하나를 골라주세요.</p>
+                      <h2 className="text-xl font-bold text-slate-900">여행 컨셉</h2>
+                      <p className="text-sm text-slate-500">
+                        원하는 여행 방향을 최대 3개까지 골라주세요.
+                      </p>
                     </div>
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
-                      1개 선택
+                      {(userInput.travelStyle || []).length}/3
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {TRAVEL_STYLE_OPTIONS.map((option) => {
                       const Icon = STYLE_ICON_MAP[option.id] || Sparkles;
-                      const isSelected = userInput.travelStyle === option.id;
+                      const isSelected = (userInput.travelStyle || []).includes(option.id);
 
                       return (
                         <button
                           key={option.id}
                           type="button"
-                          onClick={() =>
-                            setUserInput({
-                              travelStyle: option.id,
-                              travelKeywords: (userInput.travelKeywords || []).filter(
-                                (keyword) => keyword !== option.id
-                              ),
-                            })
-                          }
+                          onClick={() => toggleTravelStyle(option.id)}
                           className={`flex min-h-[104px] items-start gap-4 rounded-2xl border p-4 text-left transition-all ${
                             isSelected
                               ? 'border-black bg-black text-white shadow-xl shadow-black/15'
@@ -643,108 +774,48 @@ export default function SetupScreen({ onBack, onNext, onNavigate }: SetupScreenP
                   </div>
                 </section>
 
-                <section>
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-xl font-bold text-slate-900">보조 키워드</h2>
-                      <p className="text-sm text-slate-500">추가로 반영할 취향을 최대 3개까지 선택하세요.</p>
+                {/* 현지 이동 — 자차로 가는 국내여행이 아니면 렌터카 여부를 선택 */}
+                {effectiveTravelMode !== 'car' && (
+                  <section>
+                    <div className="mb-4">
+                      <h2 className="text-xl font-bold text-slate-900">현지 이동</h2>
+                      <p className="text-sm text-slate-500">
+                        도착 후 이동 방식에 맞춰 동선을 계획해드려요.
+                      </p>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
-                      {(userInput.travelKeywords || []).length}/3
-                    </span>
-                  </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {TRAVEL_STYLE_OPTIONS.filter((option) => option.id !== userInput.travelStyle).map(
-                      (option) => {
-                        const isSelected = (userInput.travelKeywords || []).includes(option.id);
-
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => toggleTravelKeyword(option.id)}
-                            className={`rounded-full border px-4 py-2 text-sm font-bold transition-all ${
-                              isSelected
-                                ? 'border-black bg-black text-white'
-                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      }
-                    )}
-                  </div>
-                </section>
-
-                <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div>
-                    <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">
-                      일정 밀도
-                    </h2>
-                    <div className="space-y-2">
-                      {TRAVEL_PACE_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setUserInput({ pace: option.id })}
-                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm font-bold transition-all ${
-                            (userInput.pace || 'balanced') === option.id
-                              ? 'border-black bg-black text-white'
-                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                    <button
+                      type="button"
+                      onClick={() => setUserInput({ useRentalCar: !userInput.useRentalCar })}
+                      className={`flex w-full items-center gap-3 rounded-2xl border px-5 py-4 text-left transition-all ${
+                        userInput.useRentalCar
+                          ? 'border-black bg-black text-white shadow-lg'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                      }`}
+                    >
+                      <div
+                        className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                          userInput.useRentalCar ? 'border-white bg-white' : 'border-slate-300'
+                        }`}
+                      >
+                        {userInput.useRentalCar && (
+                          <Check className="h-3.5 w-3.5 text-black" strokeWidth={4} />
+                        )}
+                      </div>
+                      <Car className="h-5 w-5" />
+                      <div>
+                        <p className="text-sm font-bold">현지에서 렌터카를 이용할게요</p>
+                        <p
+                          className={`text-xs ${
+                            userInput.useRentalCar ? 'text-white/70' : 'text-slate-400'
                           }`}
                         >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">
-                      비용 성향
-                    </h2>
-                    <div className="space-y-2">
-                      {BUDGET_PREFERENCE_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setUserInput({ budgetPreference: option.id })}
-                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm font-bold transition-all ${
-                            (userInput.budgetPreference || 'balanced') === option.id
-                              ? 'border-black bg-black text-white'
-                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-400">
-                      이동 방식
-                    </h2>
-                    <div className="space-y-2">
-                      {TRANSPORT_PREFERENCE_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setUserInput({ transportPreference: option.id })}
-                          className={`w-full rounded-xl border px-3 py-3 text-left text-sm font-bold transition-all ${
-                            (userInput.transportPreference || 'flexible') === option.id
-                              ? 'border-black bg-black text-white'
-                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </section>
+                          렌터카 픽업·반납 일정과 차량 중심 동선으로 계획해드려요
+                        </p>
+                      </div>
+                    </button>
+                  </section>
+                )}
               </div>
             )}
 

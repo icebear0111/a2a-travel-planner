@@ -27,12 +27,6 @@ const BUDGET_LIMITS: Record<
 
 const isTripFixedCostActivity = (type: string) => type === 'flight' || type === 'hotel';
 
-const BUDGET_PREFERENCE_MULTIPLIER: Record<string, number> = {
-  budget: 0.82,
-  balanced: 1,
-  premium: 1.25,
-};
-
 export async function verifyBudget(
   intent: Intent,
   flight: FlightContext,
@@ -62,10 +56,8 @@ export async function verifyBudget(
     // 4. 총합 계산
     const totalCost = flightCost + totalHotelCost + activityCost;
     const limit = BUDGET_LIMITS[intent.budgetLevel] || BUDGET_LIMITS.MEDIUM;
-    const preferenceMultiplier =
-      BUDGET_PREFERENCE_MULTIPLIER[intent.budgetPreference || 'balanced'] || 1;
-    const maxHotelCost = limit.hotelPerNight * nights * preferenceMultiplier;
-    const maxActivityCost = limit.activityPerDay * intent.duration * preferenceMultiplier;
+    const maxHotelCost = limit.hotelPerNight * nights;
+    const maxActivityCost = limit.activityPerDay * intent.duration;
     const maxBudget = flightCost + maxHotelCost + maxActivityCost;
     const status = totalCost <= maxBudget ? 'PASS' : 'FAIL';
 

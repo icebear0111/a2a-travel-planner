@@ -10,14 +10,10 @@ export interface ApiIntent {
   budgetLevel: string;
   companion: string;
   themes: string[];
-  travelStyle?: string;
-  travelKeywords?: string[];
-  pace?: 'relaxed' | 'balanced' | 'packed';
-  budgetPreference?: 'budget' | 'balanced' | 'premium';
-  transportPreference?: 'public' | 'walk-light' | 'flexible';
+  travelStyle?: string[];
 }
 
-// Flight 에이전트 응답
+// Flight 에이전트 응답 (국내여행은 기차·자차 등 다른 이동수단일 수 있음)
 export interface ApiFlight {
   price: number;
   airportCode: string;
@@ -25,6 +21,7 @@ export interface ApiFlight {
   flightDuration: string;
   departureTime: string;
   returnTime: string;
+  mode?: 'flight' | 'train' | 'bus' | 'car';
 }
 
 // Hotel 에이전트 응답

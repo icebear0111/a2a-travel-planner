@@ -60,8 +60,10 @@ export function buildDayMapUrls(params: {
   destination: string;
   focusedActivityId: string | null;
   apiKey: string;
+  /** 자차·렌터카 여행자는 거리와 무관하게 차량 경로로 표시 */
+  preferDriving?: boolean;
 }): MapUrls {
-  const { activities, destination, focusedActivityId, apiKey } = params;
+  const { activities, destination, focusedActivityId, apiKey, preferDriving = false } = params;
 
   if (activities.length === 0 || !destination) {
     return { embed: '', external: '' };
@@ -101,7 +103,8 @@ export function buildDayMapUrls(params: {
   }
 
   // Google Directions는 transit 모드에서 경유지를 지원하지 않아 경로가 깨진다.
-  // 검증된 좌표로 최장 구간을 계산해 도보(근거리)/차량(원거리) 중에서 선택한다.
+  // 검증된 좌표로 최장 구간을 계산해 도보(근거리)/차량(원거리) 중에서 선택하되,
+  // 자차·렌터카 여행자는 항상 차량 경로를 쓴다.
   let longestSegmentMeters = 0;
   for (let i = 0; i < stops.length - 1; i++) {
     const from = stops[i].coordinate;
@@ -109,7 +112,8 @@ export function buildDayMapUrls(params: {
     if (!from || !to) continue;
     longestSegmentMeters = Math.max(longestSegmentMeters, haversineMeters(from, to));
   }
-  const mode = longestSegmentMeters > WALKING_MAX_SEGMENT_METERS ? 'driving' : 'walking';
+  const mode =
+    preferDriving || longestSegmentMeters > WALKING_MAX_SEGMENT_METERS ? 'driving' : 'walking';
 
   const origin = stops[0].ref;
   const dest = stops[stops.length - 1].ref;

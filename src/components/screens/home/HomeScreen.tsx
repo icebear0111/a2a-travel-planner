@@ -5,10 +5,11 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
-import { ArrowRight, MapPin, Search } from 'lucide-react';
-import { homeSuggestions, sampleTrips } from '@/constants/initialData';
+import { ArrowRight, MapPin } from 'lucide-react';
+import { sampleTrips } from '@/constants/initialData';
 import { useTripStore } from '@/stores/tripStore';
 import { DEFAULT_TRAVEL_IMAGE } from '@/lib/utils/unsplash';
+import { getDomesticDestination } from '@/constants/destinations';
 
 const RecommendModal = dynamic(() => import('@/components/ui/RecommendModal'));
 
@@ -46,7 +47,6 @@ const sampleFallbackCards: RecommendedTripCard[] = sampleTrips.map((trip) => ({
 }));
 
 export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
-  const [inputValue, setInputValue] = useState('');
   const [isRecommendModalOpen, setIsRecommendModalOpen] = useState(false);
   // null = 로딩 중 (스켈레톤 표시)
   const [recommendedCards, setRecommendedCards] = useState<RecommendedTripCard[] | null>(null);
@@ -121,31 +121,28 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
     }
   };
 
-  // AI 추천 여행지 선택 핸들러
+  // AI 추천 여행지 선택 핸들러 — 여행지·국내/해외를 미리 채워 설정 플로우로 보낸다
   const handleSelectRecommendation = (destination: string) => {
     // 국가 정보 제거 (예: "오사카 (일본)" -> "오사카")
     const cleanDestination = destination.split('(')[0].trim();
-    setUserInput({ destination: cleanDestination });
+    setUserInput({
+      destination: cleanDestination,
+      isDomestic: Boolean(getDomesticDestination(cleanDestination)),
+      travelMode: undefined,
+      useRentalCar: false,
+    });
     onNavigate('setup');
   };
 
+  // 여행지 입력은 설정 플로우 첫 단계에서 진행 — 이전 여행 값만 초기화한다
   const handleStart = () => {
-    if (!inputValue.trim()) {
-      alert('여행지나 키워드를 입력해주세요!');
-      return;
-    }
-
-    // (1) 여행지 정보만 먼저 스토어에 저장
-    setUserInput({ destination: inputValue });
-
-    // (2) 항공권/숙소 입력을 위해 'setup' 화면으로 이동
+    setUserInput({
+      destination: '',
+      isDomestic: undefined,
+      travelMode: undefined,
+      useRentalCar: false,
+    });
     onNavigate('setup');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleStart();
-    }
   };
 
   return (
@@ -174,43 +171,14 @@ export default function HomeScreen({ isMobile, onNavigate }: HomeScreenProps) {
             만 즐기면 됩니다.
           </p>
 
-          {/* 3. 검색바 */}
-          <div className="relative max-w-2xl group">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-teal-100 rounded-[2rem] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
-            <div className="relative bg-white border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-[2rem] p-2 flex items-center transition-all focus-within:ring-2 focus-within:ring-black/5 focus-within:border-black/10">
-              <div className="pl-4 pr-2">
-                <Search className="w-5 h-5 text-slate-400" />
-              </div>
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="이번엔 어디로 떠나시나요?"
-                className="flex-1 bg-transparent border-none outline-none text-lg placeholder:text-slate-400 py-3 text-slate-900"
-              />
-              <button
-                onClick={handleStart}
-                className="bg-black text-white p-3 md:px-6 md:py-3 rounded-full font-medium hover:bg-slate-800 transition-transform active:scale-95 flex items-center gap-2"
-              >
-                <span className="hidden md:inline">시작하기</span>
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* 추천 태그 */}
-          <div className="mt-6 flex flex-wrap gap-2">
-            {homeSuggestions.map((item, i) => (
-              <button
-                key={i}
-                onClick={() => setInputValue(item.text)}
-                className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full text-sm font-medium text-slate-600 transition-colors flex items-center gap-2"
-              >
-                {item.text}
-              </button>
-            ))}
-          </div>
+          {/* 3. 시작하기 CTA — 여행 유형·여행지 입력은 설정 플로우에서 진행 */}
+          <button
+            onClick={handleStart}
+            className="bg-black text-white px-10 py-5 rounded-full font-bold text-lg shadow-xl shadow-black/20 hover:bg-slate-800 hover:shadow-2xl hover:-translate-y-1 transition-all active:scale-95 flex items-center gap-3"
+          >
+            여행 계획 시작하기
+            <ArrowRight className="w-5 h-5" />
+          </button>
         </section>
 
         {/* 4. 추천 일정 그리드 */}

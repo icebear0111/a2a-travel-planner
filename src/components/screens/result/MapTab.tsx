@@ -332,9 +332,16 @@ export default function MapTab() {
             destination: userInput.destination,
             focusedActivityId,
             apiKey: GOOGLE_API_KEY,
+            preferDriving: userInput.travelMode === 'car' || Boolean(userInput.useRentalCar),
           })
         : { embed: '', external: '' },
-    [currentSchedule, userInput.destination, focusedActivityId]
+    [
+      currentSchedule,
+      userInput.destination,
+      userInput.travelMode,
+      userInput.useRentalCar,
+      focusedActivityId,
+    ]
   );
 
   const handleActivitySelect = (activityId: string) => {

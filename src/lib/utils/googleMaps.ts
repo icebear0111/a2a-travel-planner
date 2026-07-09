@@ -288,9 +288,13 @@ async function fetchDirectionsSegment(
 // 도보로 이 시간을 넘기면 차량 경로가 더 현실적인 추정치다.
 const WALKING_FALLBACK_MAX_MINUTES = 40;
 
-async function estimateTravelSegment(origin: string, destination: string) {
+async function estimateTravelSegment(
+  origin: string,
+  destination: string,
+  preferDriving = false
+) {
   const apiKey = getGoogleMapsKey();
-  const cacheKey = `${origin.trim().toLocaleLowerCase()}→${destination
+  const cacheKey = `${preferDriving ? 'car:' : ''}${origin.trim().toLocaleLowerCase()}→${destination
     .trim()
     .toLocaleLowerCase()}`;
   const cachedSegment = readCache(directionsCache, cacheKey);
@@ -301,6 +305,15 @@ async function estimateTravelSegment(origin: string, destination: string) {
 
   if (!origin || !destination || !apiKey) {
     return null;
+  }
+
+  // 자차·렌터카 여행자는 차량 경로를 우선 사용한다.
+  if (preferDriving) {
+    const driving = await fetchDirectionsSegment(origin, destination, 'driving', apiKey);
+    if (driving) {
+      writeCache(directionsCache, cacheKey, driving);
+      return driving;
+    }
   }
 
   // 키에 따라 transit 결과가 제공되지 않는 경우가 있어(ZERO_RESULTS)
@@ -327,12 +340,15 @@ async function estimateTravelSegment(origin: string, destination: string) {
 
 export async function validateItineraryLocations(
   itinerary: DayItinerary[],
-  destination: string
+  destination: string,
+  options?: { preferDriving?: boolean }
 ): Promise<DayItinerary[]> {
   if (!getGoogleMapsKey()) {
     console.warn('Google Maps API key is missing. Skipping itinerary location validation.');
     return itinerary;
   }
+
+  const preferDriving = options?.preferDriving ?? false;
 
   // 목적지 좌표를 먼저 구해 장소 검색의 locationBias로 사용한다.
   // (같은 이름의 다른 도시 장소로 매칭되는 것을 방지 — 캐시되므로 반복 비용 없음)
@@ -382,7 +398,11 @@ export async function validateItineraryLocations(
             return activity;
           }
 
-          const travelSegment = await estimateTravelSegment(activity.address, nextActivity.address);
+          const travelSegment = await estimateTravelSegment(
+            activity.address,
+            nextActivity.address,
+            preferDriving
+          );
 
           if (!travelSegment) {
             return activity;

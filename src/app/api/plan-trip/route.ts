@@ -246,7 +246,9 @@ export async function POST(req: Request) {
         // 좌표와 이동시간은 초기 결과를 막지 않고 후속 이벤트로 보강한다.
         try {
           const enrichedItinerary = await measureStage('maps', () =>
-            validateItineraryLocations(itinerary, intent.destination)
+            validateItineraryLocations(itinerary, intent.destination, {
+              preferDriving: intent.travelMode === 'car' || Boolean(intent.useRentalCar),
+            })
           );
           sendEvent({
             type: 'enrichment',

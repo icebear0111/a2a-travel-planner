@@ -45,53 +45,34 @@ export const TRAVEL_STYLE_OPTIONS = [
   },
 ] as const;
 
-export const TRAVEL_PACE_OPTIONS = [
-  { id: 'relaxed', label: '느긋하게', prompt: 'Use a slow pace with fewer stops and more rest.' },
-  { id: 'balanced', label: '균형 있게', prompt: 'Use a balanced pace with realistic but satisfying days.' },
-  { id: 'packed', label: '빽빽하게', prompt: 'Use an active pace with fuller days, but avoid impossible transfers.' },
-] as const;
-
-export const BUDGET_PREFERENCE_OPTIONS = [
-  { id: 'budget', label: '아끼기', prompt: 'Keep activity, food, and transport costs low.' },
-  { id: 'balanced', label: '적당히', prompt: 'Balance value and experience quality.' },
-  { id: 'premium', label: '경험 우선', prompt: 'Allow premium experiences when they are memorable and worth the cost.' },
-] as const;
-
-export const TRANSPORT_PREFERENCE_OPTIONS = [
-  { id: 'public', label: '대중교통', prompt: 'Prefer public transit and walkable clusters.' },
-  { id: 'walk-light', label: '도보 적게', prompt: 'Reduce walking distance and avoid hard transfers.' },
-  { id: 'flexible', label: '상관없음', prompt: 'Choose the most efficient realistic transport mode.' },
-] as const;
+// 자차·렌터카로 이동하는 여행의 일정 생성 지시 (route 에이전트에서 사용)
+export const DRIVE_TRIP_PROMPT =
+  'The traveler moves by car (own or rental): transfers between stops are drive legs, a wider day-trip radius is fine (scenic drives, suburbs, viewpoints), prefer spots with parking, and avoid transit-hub-centric routing.';
 
 const findOption = <T extends readonly { id: string; label: string; prompt: string }[]>(
   options: T,
   id?: string
 ) => options.find((option) => option.id === id);
 
-export function getTravelStyleLabel(styleId?: string) {
-  return findOption(TRAVEL_STYLE_OPTIONS, styleId)?.label || '균형 여행';
+export function getTravelStyleLabel(styleIds?: string[]) {
+  const labels = (styleIds || [])
+    .map((id) => findOption(TRAVEL_STYLE_OPTIONS, id)?.label)
+    .filter((label): label is string => Boolean(label));
+
+  return labels.length > 0 ? labels.join(' · ') : '균형 여행';
 }
 
-export function formatTravelStyleForPrompt(input: Pick<
-  UserInput,
-  'travelStyle' | 'travelKeywords' | 'pace' | 'budgetPreference' | 'transportPreference'
->) {
-  const mainStyle = findOption(TRAVEL_STYLE_OPTIONS, input.travelStyle);
-  const pace = findOption(TRAVEL_PACE_OPTIONS, input.pace);
-  const budget = findOption(BUDGET_PREFERENCE_OPTIONS, input.budgetPreference);
-  const transport = findOption(TRANSPORT_PREFERENCE_OPTIONS, input.transportPreference);
-  const keywordPrompts = (input.travelKeywords || [])
-    .map((keyword) => findOption(TRAVEL_STYLE_OPTIONS, keyword)?.prompt)
-    .filter(Boolean);
+export function formatTravelStyleForPrompt(input: Pick<UserInput, 'travelStyle'>) {
+  const conceptOptions = (input.travelStyle || [])
+    .map((id) => findOption(TRAVEL_STYLE_OPTIONS, id))
+    .filter((option): option is (typeof TRAVEL_STYLE_OPTIONS)[number] => Boolean(option));
 
   return `
 [USER TRAVEL CONCEPT]
-- Main concept: ${mainStyle ? `${mainStyle.label} - ${mainStyle.prompt}` : 'Balanced general trip'}
-- Supporting keywords: ${
-    keywordPrompts.length > 0 ? keywordPrompts.map((keyword) => `\n  - ${keyword}`).join('') : 'None'
+- Selected concepts (apply all together): ${
+    conceptOptions.length > 0
+      ? conceptOptions.map((option) => `\n  - ${option.label}: ${option.prompt}`).join('')
+      : 'Balanced general trip'
   }
-- Pace: ${pace ? `${pace.label} - ${pace.prompt}` : 'Balanced'}
-- Budget preference: ${budget ? `${budget.label} - ${budget.prompt}` : 'Balanced'}
-- Transport preference: ${transport ? `${transport.label} - ${transport.prompt}` : 'Flexible'}
 `.trim();
 }

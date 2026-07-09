@@ -42,8 +42,8 @@ Screen names: `home`, `setup`, `loading`, `result`, `detail`, `edit`, `share`, `
 ### AI Agent Pipeline (`/api/plan-trip`)
 The core feature is a 5-agent sequential pipeline exposed as a Server-Sent Events (SSE) endpoint. When the user triggers trip generation, `tripStore.generateTrip()` POSTs `UserInput` to this route and streams progress events:
 
-1. **Intent** (`src/lib/agents/intent.ts`) — Normalizes destination, infers duration/season, sets budget level. Uses `gpt-5-nano`.
-2. **Flight** (`src/lib/agents/flight.ts`) — Parses flight constraints from `UserInput.flight`.
+1. **Intent** (`src/lib/agents/intent.ts`) — Normalizes destination (domestic Korean destinations via `constants/destinations.ts` → sets `isDomestic`/`travelMode`), infers duration/season, sets budget level. Fully local, no AI call.
+2. **Flight** (`src/lib/agents/flight.ts`) — Builds transport context (`FlightContext.mode`: flight/train/car). Domestic trips use the destinations table (항공/KTX/자차); overseas uses flight routes.
 3. **Hotel** (`src/lib/agents/hotel.ts`) — Resolves hotel location and sets the movement anchor.
 4. **Route** (`src/lib/agents/route.ts`) — Generates day-by-day itinerary including `mustVisitPlaces`. Validates coordinates via `validateItineraryLocations` (Google Maps).
 5. **Budget** (`src/lib/agents/budget.ts`) — Validates total cost; retries route generation once if budget is exceeded.

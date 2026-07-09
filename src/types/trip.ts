@@ -28,14 +28,13 @@ export interface HotelInput {
 export interface UserInput {
   destination: string;
   duration?: number; // 여행 기간 (일수)
+  isDomestic?: boolean; // 국내/해외 여부 (사용자가 확인한 값, 미확인이면 자동 추정)
+  travelMode?: 'flight' | 'train' | 'bus' | 'car'; // 목적지까지 이동수단 (국내여행용)
   flight: FlightInput;
   hotels: HotelInput[];
   mustVisitPlaces?: string[]; // 꼭 가고 싶은 장소
-  travelStyle?: string; // 대표 여행 컨셉
-  travelKeywords?: string[]; // 보조 컨셉 키워드
-  pace?: 'relaxed' | 'balanced' | 'packed'; // 일정 밀도
-  budgetPreference?: 'budget' | 'balanced' | 'premium'; // 비용 성향
-  transportPreference?: 'public' | 'walk-light' | 'flexible'; // 이동 성향
+  travelStyle?: string[]; // 여행 컨셉 (다중 선택, 최대 3개)
+  useRentalCar?: boolean; // 현지에서 렌터카 이용 여부 (항공·기차·버스 이동 시)
 }
 
 // ============================================
@@ -49,11 +48,10 @@ export interface Intent {
   companion: string;
   budgetLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   themes: string[];
-  travelStyle?: string;
-  travelKeywords?: string[];
-  pace?: UserInput['pace'];
-  budgetPreference?: UserInput['budgetPreference'];
-  transportPreference?: UserInput['transportPreference'];
+  isDomestic?: boolean; // 국내여행 여부
+  travelMode?: UserInput['travelMode']; // 목적지까지 이동수단
+  travelStyle?: string[];
+  useRentalCar?: boolean;
 }
 
 // ============================================

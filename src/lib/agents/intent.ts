@@ -1,4 +1,5 @@
 import { UserInput, Intent } from '@/types/trip';
+import { getDefaultTravelMode, getDomesticDestination } from '@/constants/destinations';
 
 // 타입 재내보내기 (다른 에이전트에서 사용)
 export type { UserInput, Intent };
@@ -66,7 +67,19 @@ export async function analyzeIntent(input: UserInput): Promise<Intent> {
   }
 
   const rawDestination = input.destination.trim();
-  const destination = DESTINATION_ALIASES[rawDestination.toLowerCase()] || rawDestination;
+
+  // 국내/해외 판별: 사용자가 확인한 값 우선, 미확인이면 여행지 테이블로 추정
+  const domestic = getDomesticDestination(rawDestination);
+  const isDomestic = input.isDomestic ?? Boolean(domestic);
+  const destination = domestic
+    ? domestic.name
+    : DESTINATION_ALIASES[rawDestination.toLowerCase()] || rawDestination;
+
+  // 국내면 목적지까지 이동수단 확정 — 모든 수단을 동일하게 허용하고(통일성),
+  // 테이블에 데이터가 없는 조합은 flight 에이전트가 AI로 추정한다.
+  const travelMode = !isDomestic
+    ? 'flight'
+    : input.travelMode || (domestic ? getDefaultTravelMode(domestic.info) : 'car');
 
   const month = new Date(startDate).getMonth() + 1;
   const season =
@@ -78,20 +91,29 @@ export async function analyzeIntent(input: UserInput): Promise<Intent> {
       ? '가을'
       : '겨울';
 
-  const fallbackThemes = FALLBACK_THEMES[destination] || DEFAULT_THEMES;
-  const preferredThemes = [input.travelStyle, ...(input.travelKeywords || [])]
-    .map((style) => (style ? STYLE_THEMES[style] : undefined))
+  // 구버전 클라이언트가 문자열(단일 컨셉)을 보낼 수 있으므로 배열로 정규화한다
+  const travelStyles = Array.isArray(input.travelStyle)
+    ? input.travelStyle
+    : input.travelStyle
+      ? [input.travelStyle]
+      : [];
+
+  const fallbackThemes = domestic?.info.themes || FALLBACK_THEMES[destination] || DEFAULT_THEMES;
+  const preferredThemes = travelStyles
+    .map((style) => STYLE_THEMES[style])
     .filter((theme): theme is string => Boolean(theme));
   const themes = [...new Set([...preferredThemes, `${season} 여행`, ...fallbackThemes])].slice(0, 3);
 
-  const budgetLevel: Intent['budgetLevel'] =
-    input.budgetPreference === 'budget'
-      ? 'LOW'
-      : input.budgetPreference === 'premium' || HIGH_BUDGET_DESTINATIONS.has(destination)
-        ? 'HIGH'
-        : 'MEDIUM';
+  // '저비용' 컨셉을 선택했으면 예산 수준을 낮춘다 (별도 비용 성향 입력은 제거됨)
+  const budgetLevel: Intent['budgetLevel'] = travelStyles.includes('budget')
+    ? 'LOW'
+    : HIGH_BUDGET_DESTINATIONS.has(destination)
+      ? 'HIGH'
+      : 'MEDIUM';
 
-  console.log(`✅ [1-Intent] 로컬 분석 완료: ${destination} (테마: ${themes.join(', ')})`);
+  console.log(
+    `✅ [1-Intent] 로컬 분석 완료: ${destination}${isDomestic ? ` (국내·${travelMode})` : ''} (테마: ${themes.join(', ')})`
+  );
 
   return {
     destination,
@@ -100,10 +122,10 @@ export async function analyzeIntent(input: UserInput): Promise<Intent> {
     companion: '친구',
     budgetLevel,
     themes,
-    travelStyle: input.travelStyle,
-    travelKeywords: input.travelKeywords || [],
-    pace: input.pace || 'balanced',
-    budgetPreference: input.budgetPreference || 'balanced',
-    transportPreference: input.transportPreference || 'flexible',
+    isDomestic,
+    travelMode,
+    // 자차 이동이면 렌터카 개념이 없으므로 항공·기차·버스일 때만 유효
+    useRentalCar: Boolean(input.useRentalCar) && travelMode !== 'car',
+    travelStyle: travelStyles,
   };
 }

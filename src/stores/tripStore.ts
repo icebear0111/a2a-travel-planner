@@ -283,11 +283,8 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
   userInput: {
     destination: '',
     mustVisitPlaces: [],
-    travelStyle: 'relaxed',
-    travelKeywords: [],
-    pace: 'balanced',
-    budgetPreference: 'balanced',
-    transportPreference: 'flexible',
+    travelStyle: ['relaxed'],
+    useRentalCar: false,
     flight: {
       originAirportCode: '',
       destAirportCode: '',
@@ -588,12 +585,22 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
               const getPercent = (amount: number) =>
                 displayTotal > 0 ? Math.round((amount / displayTotal) * 100) : 0;
 
+              // 이동수단에 맞는 교통비 라벨 (국내여행은 기차·버스·자차일 수 있음)
+              const transportCategory =
+                data.flight.mode === 'train'
+                  ? '기차'
+                  : data.flight.mode === 'bus'
+                    ? '버스'
+                    : data.flight.mode === 'car'
+                      ? '차량'
+                      : '항공';
+
               const newBudgetData = {
                 total: displayTotal,
                 currency: { rate: 1, unit: 'KRW' },
                 breakdown: [
                   {
-                    category: '항공',
+                    category: transportCategory,
                     amount: totalFlightCost,
                     percent: getPercent(totalFlightCost),
                   },
@@ -915,11 +922,8 @@ export const useTripStore = create<ExtendedTripStoreState>((set, get) => ({
       userInput: {
         destination: '',
         mustVisitPlaces: [],
-        travelStyle: 'relaxed',
-        travelKeywords: [],
-        pace: 'balanced',
-        budgetPreference: 'balanced',
-        transportPreference: 'flexible',
+        travelStyle: ['relaxed'],
+        useRentalCar: false,
         flight: {
           originAirportCode: '',
           destAirportCode: '',

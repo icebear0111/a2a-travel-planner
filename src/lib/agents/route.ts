@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { Intent } from './intent';
 import { FlightContext } from './flight';
 import { HotelContext } from './hotel';
-import { formatTravelStyleForPrompt } from '@/lib/utils/travelStyle';
+import { DRIVE_TRIP_PROMPT, formatTravelStyleForPrompt } from '@/lib/utils/travelStyle';
 
 export interface AgentSuggestion {
   target: 'HOTEL' | 'ROUTE';
@@ -87,11 +87,25 @@ export function removeForeignMustVisits(
   };
 }
 
-// 여러 날에 완전히 같은 관광지가 반복 편성되면 첫 등장만 남긴다
+// 여러 날에 같은 관광지가 반복 편성되면 첫 등장만 남긴다
 const CROSS_DAY_DEDUPE_TYPES = new Set(['sightseeing', 'theme']);
+// 포함 관계 매칭 시 짧은 키("공원 산책" 등)의 오탐을 막기 위한 최소 길이
+const MIN_CONTAINMENT_KEY_LENGTH = 6;
 
 export function dedupeRepeatedPlaces(itinerary: DayItinerary[]): DayItinerary[] {
   const seenPlaceKeys = new Set<string>();
+
+  const isDuplicate = (key: string) => {
+    if (seenPlaceKeys.has(key)) return true;
+    // "월정사 전나무숲길 산책" vs "오대산 월정사 전나무숲길 산책"처럼
+    // 표현만 다른 같은 장소를 포함 관계로 잡는다.
+    for (const seen of seenPlaceKeys) {
+      const shorterLength = Math.min(seen.length, key.length);
+      if (shorterLength < MIN_CONTAINMENT_KEY_LENGTH) continue;
+      if (seen.includes(key) || key.includes(seen)) return true;
+    }
+    return false;
+  };
 
   return itinerary.map((day) => ({
     ...day,
@@ -100,7 +114,7 @@ export function dedupeRepeatedPlaces(itinerary: DayItinerary[]): DayItinerary[] 
 
       const key = normalizePlaceKey(activity.title);
       if (!key) return true;
-      if (seenPlaceKeys.has(key)) return false;
+      if (isDuplicate(key)) return false;
       seenPlaceKeys.add(key);
       return true;
     }),
@@ -124,11 +138,69 @@ export async function generateDayItinerary(
   const isLastDay = dayNumber === totalDays;
   const stylePrompt = formatTravelStyleForPrompt(intent);
 
+  const travelMode = flight.mode || 'flight';
+  const isDomestic = Boolean(intent.isDomestic);
+  // 항공·기차·버스로 이동하면서 현지에서 렌터카를 쓰는 경우
+  const needsRentalCar = Boolean(intent.useRentalCar) && travelMode !== 'car';
+  // 자차든 렌터카든, 현지 이동이 차량 중심인 여행
+  const isDriveTrip = travelMode === 'car' || needsRentalCar;
+  const driveInstruction = isDriveTrip
+    ? `
+
+[DRIVING TRIP]
+- ${DRIVE_TRIP_PROMPT}`
+    : '';
+  const rentalPickupInstruction = needsRentalCar
+    ? `
+            - **After arrival, add a RENTAL CAR PICKUP activity.** Type: 'transport', Duration: 30m, Title: "렌터카 픽업".`
+    : '';
+  const rentalReturnInstruction = needsRentalCar
+    ? `
+- **Add a "렌터카 반납" activity (Type: 'transport', 30m) before the final departure.**`
+    : '';
+
   // 날짜별 특수 지시사항
   let daySpecificInstructions = '';
 
   if (isFirstDay) {
-    daySpecificInstructions = `
+    if (travelMode === 'car') {
+      daySpecificInstructions = `
+            [CRITICAL - DAY 1 LOGISTICS (ROAD TRIP START)]
+            - **Activity #1 MUST be the DRIVE to ${intent.destination}.**
+              - Time: ${flight.departureTime} (User Input)
+              - Duration: ${flight.flightDuration} (rest stop included)
+              - Type: 'transport'
+              - Title: "자차 출발: ${flight.originAirportCode} → ${intent.destination}"
+              - Desc: "휴게소 1회, 약 ${flight.flightDuration}"
+            - **NO airport, NO flight, NO immigration activities — this is a domestic road trip.**
+            - After arriving, CHECK-IN at "${hotel.name}" (Type: 'hotel') when time allows
+              (or one light stop near the hotel first, then check-in).
+            - Then schedule light activities near the hotel.`;
+    } else if (travelMode === 'train' || travelMode === 'bus') {
+      daySpecificInstructions = `
+            [CRITICAL - DAY 1 LOGISTICS (${travelMode === 'train' ? 'TRAIN' : 'BUS'} TRIP START)]
+            - **Activity #1 MUST be the ${travelMode === 'train' ? 'TRAIN' : 'BUS'} RIDE.**
+              - Time: ${flight.departureTime} (User Input)
+              - Duration: ${flight.flightDuration}
+              - Type: 'transport'
+              - Title: "${flight.airline} 탑승: ${flight.originAirportCode} → ${flight.destAirportCode}"
+            - **NO airport, NO flight, NO immigration activities.**${rentalPickupInstruction}
+            - **Then MOVE TO HOTEL "${hotel.name}"** (Type: 'transport') **and CHECK-IN** (Type: 'hotel').
+            - After check-in, schedule light activities near the hotel.`;
+    } else if (isDomestic) {
+      daySpecificInstructions = `
+            [CRITICAL - DAY 1 LOGISTICS (DOMESTIC FLIGHT START)]
+            - **Activity #1 MUST be the DOMESTIC FLIGHT.**
+              - Time: ${flight.departureTime} (User Input)
+              - Duration: ${flight.flightDuration}
+              - Type: 'flight'
+              - Title: "국내선 출발: ${intent.destination}행 (${flight.originAirportCode} → ${flight.destAirportCode})"
+            - **Activity #2: 공항 도착 및 수하물 수령.** Duration: 30m ~ 40m (domestic flight — **NO immigration**).
+              - Title: "${flight.destAirportCode} 공항 도착"${rentalPickupInstruction}
+            - **Then MOVE TO HOTEL "${hotel.name}"** (Type: 'transport') **and CHECK-IN** (Type: 'hotel').
+            - After check-in, schedule light activities near the hotel (considering arrival fatigue).`;
+    } else {
+      daySpecificInstructions = `
             [CRITICAL - DAY 1 LOGISTICS (FLIGHT START)]
             - **Activity #1 MUST be the FLIGHT DEPARTURE from Origin.**
               - Time: ${flight.departureTime} (User Input)
@@ -136,23 +208,58 @@ export async function generateDayItinerary(
               - Type: 'flight'
               - Title: "출국: ${intent.destination}행 비행기 탑승"
               - Desc: "출발: ${flight.originAirportCode}, 소요시간: ${flight.flightDuration}"
-            
+
             - **Activity #2 MUST be ARRIVAL & IMMIGRATION.**
               - Time: Calculate based on (Start Time + Duration).
               - Duration: 1h ~ 1.5h (Immigration & Baggage Claim).
               - Title: "${intent.destination} 공항(${flight.destAirportCode}) 도착 및 입국 수속"
-            
+
             - **Activity #3 MUST be MOVE TO HOTEL.**
               - Destination: ${hotel.name}
               - Type: 'transport'
-            
+
             - **Activity #4 MUST be CHECK-IN.**
               - Type: 'hotel'
   - Title: "${hotel.name} 체크인"
 
 - After check-in, schedule light activities near the hotel (considering arrival fatigue).`;
+    }
   } else if (isLastDay) {
-    daySpecificInstructions = `
+    if (travelMode === 'car') {
+      daySpecificInstructions = `
+            [CRITICAL - LAST DAY LOGISTICS (ROAD TRIP END)]
+- **The traveler is ALREADY in ${intent.destination} (arrived on Day 1). NEVER include an inbound ${flight.originAirportCode} → ${intent.destination} drive today — the ONLY long drive today is the DRIVE HOME at the end.**
+- Morning: Hotel checkout (luggage goes in the car).
+- Schedule light activities on the way, then head home.
+            - **Final Activity MUST be the DRIVE HOME.**
+              - Time: ${flight.returnTime}
+              - Type: 'transport'
+  - Title: "귀가 출발: ${intent.destination} → ${flight.originAirportCode}"`;
+    } else if (travelMode === 'train' || travelMode === 'bus') {
+      const stationWord = travelMode === 'train' ? '역' : '터미널';
+      daySpecificInstructions = `
+            [CRITICAL - LAST DAY LOGISTICS (${travelMode === 'train' ? 'TRAIN' : 'BUS'} TRIP END)]
+- **The traveler is ALREADY in ${intent.destination} (arrived on Day 1). NEVER include an inbound ${flight.originAirportCode} → ${flight.destAirportCode} leg today — the ONLY long-distance ride today is the RETURN trip at the end.**
+- Morning: Hotel checkout or luggage storage.
+- Schedule light activities near the ${stationWord} area.${rentalReturnInstruction}
+- **Schedule "${stationWord}으로 이동" about 40 minutes before the departure time.**
+            - **Final Activity MUST be the RETURN ${travelMode === 'train' ? 'TRAIN' : 'BUS'}.**
+              - Time: ${flight.returnTime}
+              - Type: 'transport'
+  - Title: "${flight.airline} 귀경: ${flight.destAirportCode} → ${flight.originAirportCode}"`;
+    } else if (isDomestic) {
+      daySpecificInstructions = `
+            [CRITICAL - LAST DAY LOGISTICS (DOMESTIC FLIGHT END)]
+- **The traveler is ALREADY in ${intent.destination} (arrived on Day 1). NEVER include an inbound ${flight.originAirportCode} → ${flight.destAirportCode} flight today — the ONLY flight today is the RETURN flight at the end.**
+- Morning: Hotel checkout or luggage storage.
+- Schedule light activities near the airport or central area.${rentalReturnInstruction}
+- **Schedule "Travel to Airport" 1 hour before the flight time (domestic — short check-in).**
+            - **Final Activity MUST be the DOMESTIC FLIGHT HOME.**
+              - Time: ${flight.returnTime}
+              - Type: 'flight'
+  - Title: "귀가: ${flight.destAirportCode} 국내선 출발"`;
+    } else {
+      daySpecificInstructions = `
             [CRITICAL - LAST DAY LOGISTICS]
 - Morning: Hotel checkout or luggage storage.
 - Schedule light activities near the airport or central area.
@@ -161,6 +268,7 @@ export async function generateDayItinerary(
               - Time: ${flight.returnTime}
               - Type: 'flight'
   - Title: "귀국: 공항 출발 (${flight.destAirportCode})"`;
+    }
   } else {
     daySpecificInstructions = `
 [FULL DAY - MIDDLE DAY]
@@ -217,7 +325,7 @@ ${daySpecificInstructions}
 
 ${budgetAdjustmentInstruction}
 
-${stylePrompt}
+${stylePrompt}${driveInstruction}
 
             REQUIRED JSON STRUCTURE:
             {
@@ -244,18 +352,17 @@ ${stylePrompt}
 - Day: ${dayNumber} of ${totalDays}
             - Themes: ${intent.themes.join(', ')}
             - Companion: ${intent.companion}
-            - Travel Concept: ${intent.travelStyle || 'balanced'}
+            - Travel Concept: ${intent.travelStyle?.join(', ') || 'balanced'}
 
             Basecamp (Hotel):
             - Name: ${hotel.name}
             - Location Hint: ${hotel.address}
 
-            Transport Data:
-- Origin Airport: ${flight.originAirportCode}
-- Destination Airport: ${flight.destAirportCode}
-- Origin Departure: ${flight.departureTime}
-            - Flight Duration: ${flight.flightDuration}
-- Return Departure: ${flight.returnTime}
+            Transport Data (mode: ${travelMode}${isDomestic ? ', DOMESTIC trip within Korea' : ''}):
+- Route: ${flight.originAirportCode} → ${flight.destAirportCode} (${flight.airline})
+- Outbound Departure: ${flight.departureTime} / Return Departure: ${flight.returnTime}
+            - Travel Duration: ${flight.flightDuration}
+${needsRentalCar ? '- The traveler picks up a rental car on arrival and returns it before departure. Plan drive-based days.' : ''}
 
 Must-Visit Places assigned to THIS DAY (USER PRIORITY):
 ${

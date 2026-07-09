@@ -108,6 +108,112 @@ interface PlacesSearchResponse {
 // POI 검색 반경 (locationBias) — 도시권 커버, Places API 최대 허용값
 const PLACES_BIAS_RADIUS_METERS = 50000;
 
+// ============================================
+// 실존 POI 후보 풀 — 일정 생성 전에 목적지의 검증된 인기 장소를 뽑아
+// 프롬프트에 주입한다 (환각·폐업 장소 편성을 생성 단계에서 예방)
+// ============================================
+
+export interface PoiCandidate {
+  name: string;
+  rating?: number;
+}
+
+interface PoiSearchResponse {
+  places?: {
+    displayName?: { text?: string };
+    rating?: number;
+    userRatingCount?: number;
+  }[];
+  error?: { status?: string; message?: string };
+}
+
+const poiCache = new Map<string, CacheEntry<PoiCandidate[]>>();
+
+// 컨셉별 검색 키워드 — 선택된 컨셉에 맞는 실존 장소를 후보에 포함시킨다
+const CONCEPT_POI_QUERIES: Record<string, string> = {
+  food: '유명 맛집',
+  culture: '박물관 유적지',
+  nature: '자연 명소 공원',
+  shopping: '쇼핑 거리 시장',
+};
+
+async function searchPoiList(query: string, apiKey: string): Promise<PoiCandidate[]> {
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName,places.rating,places.userRatingCount',
+      },
+      body: JSON.stringify({ textQuery: query, languageCode: 'ko', pageSize: 12 }),
+    });
+
+    const data = (await response.json()) as PoiSearchResponse;
+    if (!response.ok || data.error) {
+      warnApiStatusOnce(
+        'Places(poiCandidates)',
+        data.error?.status || `HTTP ${response.status}`,
+        data.error?.message
+      );
+      return [];
+    }
+
+    return (data.places || [])
+      .filter(
+        (place) =>
+          place.displayName?.text &&
+          // 리뷰가 어느 정도 쌓인 실존·운영 중 장소만 후보로 쓴다
+          (place.userRatingCount ?? 0) >= 50 &&
+          (place.rating ?? 0) >= 4.0
+      )
+      .map((place) => ({ name: place.displayName!.text!, rating: place.rating }));
+  } catch (error) {
+    console.error('Google Places POI search failed:', error);
+    return [];
+  }
+}
+
+/**
+ * 목적지의 실존 인기 장소 후보를 수집한다 (관광 명소 + 선택 컨셉별 최대 2종).
+ * 실패해도 빈 배열을 반환해 일정 생성을 막지 않는다.
+ */
+export async function fetchPoiCandidates(
+  destination: string,
+  conceptIds: string[] = []
+): Promise<PoiCandidate[]> {
+  const apiKey = getGoogleMapsKey();
+  if (!destination.trim() || !apiKey) return [];
+
+  const conceptQueries = conceptIds
+    .map((id) => CONCEPT_POI_QUERIES[id])
+    .filter((query): query is string => Boolean(query))
+    .slice(0, 2);
+  const queries = [`${destination} 인기 관광 명소`, ...conceptQueries.map((q) => `${destination} ${q}`)];
+
+  const cacheKey = queries.join('|').toLocaleLowerCase();
+  const cached = readCache(poiCache, cacheKey);
+  if (cached) return cached;
+
+  const results = await Promise.all(queries.map((query) => searchPoiList(query, apiKey)));
+
+  // 이름 기준 중복 제거 후 평점순 상위만 유지 (프롬프트 크기 제한)
+  const seen = new Set<string>();
+  const candidates: PoiCandidate[] = [];
+  for (const place of results.flat()) {
+    const key = place.name.toLocaleLowerCase().replace(/\s/g, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(place);
+  }
+  candidates.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  const top = candidates.slice(0, 24);
+
+  writeCache(poiCache, cacheKey, top);
+  console.log(`📍 [POI] ${destination} 실존 장소 후보 ${top.length}곳 확보`);
+  return top;
+}
+
 // Places Text Search (New): 가게·명소 이름 같은 자연어 장소 검색에 강하다.
 // biasCenter(목적지 좌표)를 주면 같은 이름의 다른 도시 장소로 튀는 것을 막는다.
 async function searchPlaceByText(

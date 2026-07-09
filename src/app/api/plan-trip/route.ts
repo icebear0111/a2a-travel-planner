@@ -8,10 +8,11 @@ import {
   dedupeRepeatedPlaces,
   generateDayItinerary,
   generateItinerary,
+  planTripSkeleton,
   removeForeignMustVisits,
 } from '@/lib/agents/route';
 import { verifyBudget } from '@/lib/agents/budget';
-import { validateItineraryLocations } from '@/lib/utils/googleMaps';
+import { fetchPoiCandidates, validateItineraryLocations } from '@/lib/utils/googleMaps';
 
 // TripStore에 정의된 UserInput과 동일한 구조라고 가정 (타입 import 또는 any 사용)
 // 여기서는 런타임에 userRequest가 넘어오므로 흐름만 제어하면 됩니다.
@@ -83,7 +84,16 @@ export async function POST(req: Request) {
           message: '숙소 정보 확인 중...',
         });
 
-        const [flightContext, hotelContext] = await Promise.all([
+        // 같은 must-visit 장소가 여러 날에 중복 편성되지 않도록 날짜별로 사전 배정한다.
+        // (병렬 생성이라 각 날짜가 서로의 일정을 모르기 때문)
+        const mustVisitAssignment = assignMustVisitPlaces(
+          userRequest.mustVisitPlaces,
+          intent.duration
+        );
+
+        // 여행 골격(날짜별 지역 배정)과 실존 POI 후보 수집은 Flight·Hotel과
+        // 서로 독립이라 함께 병렬 실행한다 — 실패해도 일정 생성을 막지 않는다.
+        const [flightContext, hotelContext, tripSkeleton, poiCandidates] = await Promise.all([
           measureStage('flight', () => determineFlightConstraints(intent, userRequest)).then(
             (result) => {
               sendEvent({
@@ -104,6 +114,12 @@ export async function POST(req: Request) {
             });
             return result;
           }),
+          measureStage('skeleton', () => planTripSkeleton(intent, mustVisitAssignment)).catch(
+            () => null
+          ),
+          measureStage('poi', () =>
+            fetchPoiCandidates(intent.destination, intent.travelStyle || [])
+          ).catch(() => []),
         ]);
 
         // ==========================================
@@ -129,12 +145,6 @@ export async function POST(req: Request) {
           message: '최적 동선 시뮬레이션 가동...',
         });
 
-        // 같은 must-visit 장소가 여러 날에 중복 편성되지 않도록 날짜별로 사전 배정한다.
-        // (병렬 생성이라 각 날짜가 서로의 일정을 모르기 때문)
-        const mustVisitAssignment = assignMustVisitPlaces(
-          userRequest.mustVisitPlaces,
-          intent.duration
-        );
         const allAssignedPlaces = [...mustVisitAssignment.values()].flat();
 
         // 일자별로 병렬 생성하되, 완료되는 날짜부터 즉시 스트리밍해
@@ -147,16 +157,12 @@ export async function POST(req: Request) {
           );
 
           return measureStage(`route-day${dayNumber}`, () =>
-            generateDayItinerary(
-              dayNumber,
-              intent.duration,
-              intent,
-              flightContext,
-              hotelContext,
-              assignedForDay,
-              undefined,
-              reservedForOtherDays
-            )
+            generateDayItinerary(dayNumber, intent.duration, intent, flightContext, hotelContext, {
+              assignedMustVisit: assignedForDay,
+              otherDaysMustVisit: reservedForOtherDays,
+              dayPlan: tripSkeleton?.get(dayNumber),
+              poiCandidates,
+            })
           )
             .then((day) => {
               // 다른 날짜에 배정된 must-visit이 끼어들었으면 스트리밍 전에 제거한다.
@@ -205,7 +211,8 @@ export async function POST(req: Request) {
                 flightContext,
                 hotelContext,
                 budgetCheck.suggestion,
-                userRequest.mustVisitPlaces
+                userRequest.mustVisitPlaces,
+                { dayPlans: tripSkeleton, poiCandidates }
               )
             );
           }

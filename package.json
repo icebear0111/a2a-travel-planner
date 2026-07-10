@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "eval": "tsx scripts/eval.ts"
   },
   "dependencies": {
     "@vis.gl/react-google-maps": "^1.9.0",
@@ -31,6 +32,7 @@
     "eslint-config-next": "^16.2.10",
     "postcss": "8.5.16",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   },
   "overrides": {

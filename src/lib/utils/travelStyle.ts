@@ -58,7 +58,7 @@ export const CONTENT_CONCEPT_IDS = ['food', 'culture', 'nature', 'shopping'] as 
 
 // 자차·렌터카로 이동하는 여행의 일정 생성 지시 (route 에이전트에서 사용)
 export const DRIVE_TRIP_PROMPT =
-  'The traveler moves by car (own or rental): transfers between stops are drive legs, a wider day-trip radius is fine (scenic drives, suburbs, viewpoints), prefer spots with parking, and avoid transit-hub-centric routing.';
+  'The traveler moves by car (own or rental): transfers between stops are drive legs, a wider day-trip radius is fine (scenic drives, suburbs, viewpoints), prefer spots with parking, and avoid transit-hub-centric routing. BUT one day still covers ONE direction/area only — plan stops along a single route and NEVER zig-zag across opposite sides of the region in the same day.';
 
 const findOption = <T extends readonly { id: string; label: string; prompt: string }[]>(
   options: T,

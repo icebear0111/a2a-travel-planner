@@ -259,21 +259,29 @@ function runRuleChecks(output: PipelineOutput, totalDays: number): RuleReport {
       continue;
     }
 
-    // 2. 시간 형식·시간순·겹침
+    // 2. 시간 형식·시간순·겹침 — 자정 넘김(장거리 항공 심야 도착)은
+    //    route.ts와 같은 휴리스틱(12시간 이상 역행 시 +24h)으로 보정한다
     const badTime = acts.filter((a) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(a.time));
     check(badTime.length === 0, `Day ${day.day} 시간 형식 위반 ${badTime.length}건`);
+
+    let wrapOffset = 0;
+    let prevRaw = -Infinity;
+    const wrapKeys = acts.map((a) => {
+      const raw = toMinutes(a.time);
+      if (prevRaw !== -Infinity && raw < prevRaw - 12 * 60) wrapOffset += 24 * 60;
+      prevRaw = raw;
+      return raw + wrapOffset;
+    });
 
     let overlap = 0;
     for (let i = 0; i < acts.length - 1; i++) {
       const dur = parseDurationMinutes(acts[i].duration);
       if (dur === null) continue;
-      if (toMinutes(acts[i].time) + dur > toMinutes(acts[i + 1].time)) overlap += 1;
+      if (wrapKeys[i] + dur > wrapKeys[i + 1]) overlap += 1;
     }
     check(overlap === 0, `Day ${day.day} 시간 겹침 ${overlap}건`);
 
-    const sorted = [...acts].every(
-      (a, i) => i === 0 || toMinutes(a.time) >= toMinutes(acts[i - 1].time)
-    );
+    const sorted = wrapKeys.every((key, i) => i === 0 || key >= wrapKeys[i - 1]);
     check(sorted, `Day ${day.day} 시간순 정렬 위반`);
 
     // 3. 식사 라벨-시간 일치

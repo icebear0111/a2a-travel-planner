@@ -5,6 +5,7 @@ import { determineHotel } from '@/lib/agents/hotel';
 import {
   DayItinerary,
   assignMustVisitPlaces,
+  critiqueItinerary,
   dedupeRepeatedPlaces,
   generateDayItinerary,
   generateItinerary,
@@ -180,11 +181,24 @@ export async function POST(req: Request) {
             });
         });
 
-        let itinerary = dedupeRepeatedPlaces(
-          (await measureStage('route', () => Promise.all(dayPromises))).sort(
-            (a, b) => a.day - b.day
-          )
+        const generatedDays = (await measureStage('route', () => Promise.all(dayPromises))).sort(
+          (a, b) => a.day - b.day
         );
+
+        // 검수(critic) 패스 — 시간 겹침·환각 장소·지역 이탈을 교정한다.
+        // day-result는 이미 스트리밍됐으므로 첫 화면 속도에 영향이 없고,
+        // 교정본은 최종 result 이벤트로 화면에 반영된다.
+        sendEvent({
+          type: 'progress',
+          stepIndex: 3,
+          status: 'running',
+          message: '일정 품질 검수 중...',
+        });
+        const reviewedDays = await measureStage('critic', () =>
+          critiqueItinerary(generatedDays, intent, flightContext, hotelContext, tripSkeleton)
+        );
+
+        let itinerary = dedupeRepeatedPlaces(reviewedDays);
 
         sendEvent({
           type: 'progress',

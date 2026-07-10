@@ -147,6 +147,22 @@ const minusMinutes = (time: string, minutes: number) => {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
 
+const parseDurationMinutes = (duration: string): number | null => {
+  const hours = /(\d+)\s*h/.exec(duration)?.[1];
+  const minutes = /(\d+)\s*m/.exec(duration)?.[1];
+  if (!hours && !minutes) return null;
+  return Number(hours || 0) * 60 + Number(minutes || 0);
+};
+
+const formatDurationMinutes = (total: number) => {
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (hours <= 0) return `${minutes}m`;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+
+const RETURN_LEG_PATTERN = /귀국|귀경|귀가/;
+
 // 시간순 정렬·id 재부여·내부 필드 제거 — 프롬프트가 보장 못 하는 통일성은 코드로 확정한다.
 // 장거리 항공처럼 자정을 넘기는 날(23:30 도착 → 00:10 이동)은 단순 시간 정렬이
 // 심야 활동을 하루 맨 앞으로 보내버리므로, 원래 순서에서 시간이 크게 역행하면
@@ -155,7 +171,8 @@ const DAY_WRAP_THRESHOLD_MINUTES = 12 * 60;
 
 function normalizeDayActivities(
   dayNumber: number,
-  activities: GeneratedActivity[]
+  activities: GeneratedActivity[],
+  isLastDay = false
 ): Activity[] {
   let wrapOffset = 0;
   let prevRawMinutes = -Infinity;
@@ -165,11 +182,38 @@ function normalizeDayActivities(
       wrapOffset += 24 * 60;
     }
     prevRawMinutes = rawMinutes;
-    return { activity, sortKey: rawMinutes + wrapOffset };
+    return { activity: { ...activity }, sortKey: rawMinutes + wrapOffset };
   });
 
   keyed.sort((a, b) => a.sortKey - b.sortKey);
-  return keyed.map(({ activity }, index) => {
+  let sorted = keyed.map((entry) => entry.activity);
+
+  // 마지막 날: 귀환편이 하루의 마지막 활동이어야 한다 — 그 이후에 시작하는
+  // 활동(모델이 가끔 만드는 "귀환 후 렌터카 반납" 같은 모순)은 제거한다.
+  if (isLastDay) {
+    const returnLeg = sorted.find((activity) => RETURN_LEG_PATTERN.test(activity.title));
+    if (returnLeg) {
+      const returnStart = toMinutes(returnLeg.time);
+      sorted = sorted.filter(
+        (activity) => activity === returnLeg || toMinutes(activity.time) < returnStart
+      );
+    }
+  }
+
+  // 시간 겹침은 시작 시각을 옮기지 않고 이전 활동의 duration을 줄여 해소한다
+  // (시작 시각 이동은 식사 시간대·교통 앵커를 연쇄적으로 깨뜨린다)
+  // 단, 축소 결과가 비현실적으로 짧아지면(10분짜리 식사) 그대로 둔다 — 작은 겹침이 낫다.
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const gap = toMinutes(sorted[i].time) - toMinutes(prev.time);
+    const duration = parseDurationMinutes(prev.duration);
+    const minDuration = prev.type === 'food' ? 40 : 15;
+    if (duration !== null && gap >= minDuration && duration > gap) {
+      prev.duration = formatDurationMinutes(gap);
+    }
+  }
+
+  return sorted.map((activity, index) => {
     const rest: GeneratedActivity = { ...activity, id: `d${dayNumber}-${index + 1}` };
     delete rest.conceptTag;
     return rest;
@@ -179,6 +223,159 @@ function normalizeDayActivities(
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// ============================================
+// critic(검수) 에이전트 — 생성된 하루 일정의 결함만 고친다
+// ============================================
+// 생성 프롬프트가 못 막는 잔여 결함(시간 겹침, 환각 장소명, 지역 이탈,
+// 식사 라벨 오류)을 편집자 역할의 두 번째 호출이 교정한다.
+// day-result 스트리밍 후 병렬로 돌므로 첫 화면 표시 속도에는 영향이 없고,
+// 교정본은 최종 result 이벤트로 반영된다.
+
+const CRITIC_RESPONSE_FORMAT = {
+  type: 'json_schema' as const,
+  json_schema: {
+    name: 'day_review',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['changed', 'fixes', 'activities'],
+      properties: {
+        changed: { type: 'boolean' },
+        fixes: { type: 'array', items: { type: 'string' } },
+        activities: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'time', 'duration', 'type', 'title', 'location', 'desc', 'price'],
+            properties: {
+              id: { type: 'string' },
+              time: { type: 'string', pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' },
+              duration: { type: 'string' },
+              type: { type: 'string', enum: ACTIVITY_TYPE_VALUES },
+              title: { type: 'string' },
+              location: { type: 'string' },
+              desc: { type: 'string' },
+              price: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const hasReturnLeg = (activities: Activity[]) =>
+  activities.some((activity) => RETURN_LEG_PATTERN.test(activity.title));
+
+export async function critiqueDayItinerary(
+  day: DayItinerary,
+  totalDays: number,
+  intent: Intent,
+  flight: FlightContext,
+  hotel: HotelContext,
+  dayPlan?: DayPlan
+): Promise<DayItinerary> {
+  if (day.activities.length === 0) return day;
+
+  const dayDate = resolveDayDate(intent.startDate, day.day);
+  const isLastDay = day.day === totalDays;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.4-mini',
+      reasoning_effort: 'none',
+      temperature: 0.4,
+      response_format: CRITIC_RESPONSE_FORMAT,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a meticulous travel-itinerary QA editor. You receive ONE generated day of a trip to ${intent.destination}.
+Fix ONLY real defects from the checklist below. Keep everything else EXACTLY as-is — do NOT re-plan the day, do NOT add or remove stops unless a checklist rule requires it.
+
+[CHECKLIST]
+1. TIME LOGIC: times must be chronological and each activity's start + duration must NOT pass the next activity's
+   start. Adjust times/durations minimally to remove overlaps and impossible transitions.
+2. REAL PLACES ONLY: replace invented or suspicious names (nonexistent business, menu text used as a place name,
+   a landmark that is actually in another city) with a well-known REAL place of the same kind in the same area.
+3. AREA:${
+            dayPlan
+              ? ` today's assigned area is "${dayPlan.area}" — replace stops that sit in a clearly different district
+   with real in-area alternatives (transport anchors excepted).`
+              : ' keep the day geographically clustered — replace stops that force cross-city zig-zags.'
+          }
+4. MEALS: labels must match times (아침 07:00~10:00, 점심 11:30~14:00, 저녁 17:30~20:30) and on-site meal
+   windows must not be empty.
+5. FIXED ANCHORS — NEVER TOUCH: outbound/return transport legs (mode: ${flight.mode}, outbound ${flight.departureTime}, return ${flight.returnTime}), hotel check-in/checkout activities, and must-visit places.
+   NEVER change the 'time' of any transport/hotel/flight activity, and NEVER place any activity after the return leg.
+   EXCEPTION: the outbound/return leg's duration must be exactly "${flight.flightDuration}" — fix it if it differs,
+   and fix any activity scheduled before the outbound leg actually arrives (departure + duration + 입국 수속).${
+            isLastDay
+              ? ` This is the LAST day: the return leg must remain the FINAL activity at ${flight.returnTime}.`
+              : ''
+          }
+6. PRICES: realistic 2026 per-person KRW (0 for free).
+
+LANGUAGE: keep titles/descs in Korean. If nothing is wrong, return changed=false with the original activities unchanged.
+"fixes": short Korean notes of what you corrected (empty array if none).`,
+        },
+        {
+          role: 'user',
+          content: `Day ${day.day} of ${totalDays}${dayDate ? ` — ${dayDate.label}, ${dayDate.season}` : ''}
+Hotel (basecamp): ${hotel.name}
+Travel concepts: ${intent.travelStyle?.join(', ') || 'balanced'}
+
+Itinerary to review:
+${JSON.stringify(day.activities, null, 1)}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) return day;
+
+    const review = JSON.parse(content) as {
+      changed: boolean;
+      fixes: string[];
+      activities: Activity[];
+    };
+    if (!review.changed) return day;
+
+    // 안전 가드 — 검수가 일정을 망가뜨리면 원본을 유지한다
+    const corrected = review.activities || [];
+    const tooShort = corrected.length < Math.ceil(day.activities.length / 2);
+    const lostReturnLeg = isLastDay && hasReturnLeg(day.activities) && !hasReturnLeg(corrected);
+    if (corrected.length === 0 || tooShort || lostReturnLeg) {
+      console.warn(`⚠️ [4-Critic] Day ${day.day} 검수 결과 이상 → 원본 유지`);
+      return day;
+    }
+
+    if (review.fixes.length > 0) {
+      console.log(`🩹 [4-Critic] Day ${day.day} 교정: ${review.fixes.join(' / ')}`);
+    }
+    return { day: day.day, activities: normalizeDayActivities(day.day, corrected, isLastDay) };
+  } catch (error) {
+    console.error(`❌ [4-Critic] Day ${day.day} 검수 실패 (원본 유지):`, error);
+    return day;
+  }
+}
+
+/** 전체 일정을 날짜별 병렬로 검수한다 — 실패한 날짜는 원본 유지 */
+export async function critiqueItinerary(
+  itinerary: DayItinerary[],
+  intent: Intent,
+  flight: FlightContext,
+  hotel: HotelContext,
+  dayPlans?: Map<number, DayPlan> | null
+): Promise<DayItinerary[]> {
+  return Promise.all(
+    itinerary.map((day) =>
+      critiqueDayItinerary(day, intent.duration, intent, flight, hotel, dayPlans?.get(day.day))
+    )
+  );
+}
 
 // ============================================
 // 여행 골격(skeleton) 에이전트 — 날짜별 지역 사전 배정
@@ -571,8 +768,8 @@ export async function generateDayItinerary(
             [CRITICAL - LAST DAY LOGISTICS]
 - **The traveler is ALREADY in ${intent.destination}. The ONLY flight today is the RETURN flight at ${flight.returnTime}, and it MUST be the LAST activity of the day. NEVER place a flight at the start of the day and NEVER reuse the outbound time ${flight.departureTime}.**
 - **Activity #1 MUST be hotel checkout & luggage storage (Type: 'hotel', around 09:00, 30m).**
-- Schedule light activities near the airport or central area — **ALL sightseeing/meals must END by ${minusMinutes(flight.returnTime, 210)}.**
-- **Schedule "공항으로 이동" (Type: 'transport') starting at ${minusMinutes(flight.returnTime, 210)}**, so the traveler ARRIVES at the airport by ${minusMinutes(flight.returnTime, 150)} — international check-in needs 2.5 hours plus ~1 hour transfer from the city.
+- Schedule light activities near the airport or central area — **ALL sightseeing/meals must END by ${minusMinutes(flight.returnTime, 240)}.**
+- **Schedule "공항으로 이동" (Type: 'transport') starting at ${minusMinutes(flight.returnTime, 240)}**, so the traveler ARRIVES at the airport by ${minusMinutes(flight.returnTime, 180)} — international check-in needs 3 hours plus ~1 hour transfer from the city.
             - **Final Activity MUST be FLIGHT DEPARTURE from Destination.**
               - Time: ${flight.returnTime}
               - Type: 'flight'
@@ -807,7 +1004,7 @@ ${emphasis}
 
   return {
     day: dayNumber,
-    activities: normalizeDayActivities(dayNumber, activities),
+    activities: normalizeDayActivities(dayNumber, activities, isLastDay),
   };
 }
 
@@ -860,9 +1057,10 @@ export async function generateItinerary(
     const results = await Promise.all(dayPromises);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    // 날짜순 정렬 후 날짜 간 관광지 중복 제거
+    // 날짜순 정렬 → 검수(critic) 교정 → 날짜 간 관광지 중복 제거
     results.sort((a, b) => a.day - b.day);
-    const deduped = dedupeRepeatedPlaces(results);
+    const reviewed = await critiqueItinerary(results, intent, flight, hotel, extras?.dayPlans);
+    const deduped = dedupeRepeatedPlaces(reviewed);
 
     console.log(`✅ [4-Route] ${intent.destination} 일정 생성 완료! (${elapsed}s, 병렬 처리)`);
 
